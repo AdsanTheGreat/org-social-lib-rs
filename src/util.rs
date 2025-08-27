@@ -1,4 +1,4 @@
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, SecondsFormat};
 
 pub fn parse_timestamp(s: &str) -> Result<DateTime<FixedOffset>, chrono::ParseError> {
     if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
@@ -11,6 +11,6 @@ pub fn parse_timestamp(s: &str) -> Result<DateTime<FixedOffset>, chrono::ParseEr
 
 /// Get the current local time, with timezone, in RFC 3339 format 
 pub fn get_current_timestamp() -> String {
-    let now: DateTime<FixedOffset> = chrono::Local::now().into();
-    now.to_rfc3339()
+    chrono::Local::now()
+        .to_rfc3339_opts(SecondsFormat::Secs, false)
 }
