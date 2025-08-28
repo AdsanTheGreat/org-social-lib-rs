@@ -9,11 +9,14 @@ use chrono::{DateTime, FixedOffset};
 
 use crate::profile::Profile;
 use crate::util;
+use crate::tokenizer::{Token, Tokenizer};
+use crate::blocks::{ActivatableElement, parse_blocks};
 
 /// Represents a post parsed from an org-social file.
 /// 
-/// Contains post metadata, it's content, author and source information.
-#[derive(Clone)]
+/// Contains post metadata, it's content, author and source information,
+/// as well as parsed tokens and blocks from the content.
+#[derive(Clone, Debug)]
 #[derive(Default)]
 pub struct Post {
     id: String,
@@ -27,6 +30,8 @@ pub struct Post {
     pub(crate) content: String,
     source: Option<String>,
     author: Option<String>,
+    tokens: Vec<Token>,
+    blocks: Vec<ActivatableElement>,
 }
 
 
@@ -44,6 +49,8 @@ impl From<&Post> for Post {
             content: post.content.clone(),
             source: post.source.clone(),
             author: post.author.clone(),
+            tokens: post.tokens.clone(),
+            blocks: post.blocks.clone(),
         }
     }
 }
@@ -123,7 +130,7 @@ impl From<Vec<String>> for Post {
             content.pop();
         }
 
-        Post {
+        let mut post = Post {
             id,
             lang,
             tags,
@@ -135,7 +142,13 @@ impl From<Vec<String>> for Post {
             content,
             source: None,
             author: None,
-        }
+            tokens: Vec::new(),
+            blocks: Vec::new(),
+        };
+
+        post.parse_content();
+        
+        post
     }
 }
 
@@ -143,19 +156,42 @@ impl Display for Post {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Post:\nID: {}\nLang: {:?}\nTags: {:?}\nClient: {:?}\nReply To: {:?}\nPoll End: {:?}\nPoll Option: {:?}\nMood: {:?}\nSource: {:?}\nAuthor: {:?}\nContent:\n{}",
-            self.id, self.lang, self.tags, self.client, self.reply_to, self.poll_end, self.poll_option, self.mood, self.source, self.author, self.content
+            "Post:\nID: {}\nLang: {:?}\nTags: {:?}\nClient: {:?}\nReply To: {:?}\nPoll End: {:?}\nPoll Option: {:?}\nMood: {:?}\nSource: {:?}\nAuthor: {:?}\nTokens: {} parsed\nBlocks: {} parsed\nContent:\n{}",
+            self.id, self.lang, self.tags, self.client, self.reply_to, self.poll_end, self.poll_option, self.mood, self.source, self.author, self.tokens.len(), self.blocks.len(), self.content
         )
     }
 }
 
 impl Post {
     pub fn new(id: String, content: String) -> Self {
-        Post {
+        let mut post = Post {
             id,
             content,
+            tokens: Vec::new(),
+            blocks: Vec::new(),
             ..Default::default()
-        }
+        };
+        
+        post.parse_content();
+        
+        post
+    }
+
+    /// Parse the content to extract tokens and blocks.
+    /// This method supports multi-line content and preserves newlines.
+    pub fn parse_content(&mut self) {
+        let mut tokenizer = Tokenizer::new(self.content.clone());
+        self.tokens = tokenizer.tokenize();
+        
+        self.blocks = parse_blocks(&self.content);
+    }
+
+    pub fn tokens(&self) -> &[Token] {
+        &self.tokens
+    }
+
+    pub fn blocks(&self) -> &[ActivatableElement] {
+        &self.blocks
     }
 
     pub fn time(&self) -> Option<DateTime<FixedOffset>> {
@@ -222,8 +258,10 @@ impl Post {
         self.id = id;
     }
 
+    // Automatically re-parses the new content.
     pub fn set_content(&mut self, content: String) {
         self.content = content;
+        self.parse_content();
     }
 
     pub fn set_tags(&mut self, tags: Option<Vec<String>>) {
@@ -426,5 +464,95 @@ impl Post {
         lines.push(self.content.clone());
 
         lines.join("\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_post_self_parsing() {
+        let content = "This is *bold* text with /italic/ formatting.\nAnd a second line with ~code~.".to_string();
+        let post = Post::new("test-id".to_string(), content.clone());
+        
+        assert_eq!(post.content(), &content);
+        assert!(!post.tokens().is_empty());
+        
+        let tokens = post.tokens();
+        assert!(tokens.iter().any(|t| matches!(t, Token::Bold(_))));
+        assert!(tokens.iter().any(|t| matches!(t, Token::Italic(_))));
+        assert!(tokens.iter().any(|t| matches!(t, Token::InlineCode(_))));
+    }
+
+    #[test] 
+    fn test_multiline_content_preservation() {
+        let multiline_content = "Line one\nLine two\nLine three".to_string();
+        let post = Post::new("test-id".to_string(), multiline_content.clone());
+        
+        assert_eq!(post.content(), &multiline_content);
+        assert_eq!(post.content().lines().count(), 3);
+        
+        assert!(post.content().contains('\n'));
+    }
+
+    #[test]
+    fn test_content_reparsing() {
+        let mut post = Post::new("test-id".to_string(), "Initial content".to_string());
+        let initial_token_count = post.tokens().len();
+        
+        // Change content to something with more formatting
+        post.set_content("New *bold* content with /italic/ and ~code~".to_string());
+        
+        // Should have more tokens now
+        assert!(post.tokens().len() >= initial_token_count);
+        assert!(post.tokens().iter().any(|t| matches!(t, Token::Bold(_))));
+    }
+
+    #[test]
+    fn test_from_org_social_format_with_multiline() {
+        let post_lines = vec![
+            "**".to_string(),
+            ":PROPERTIES:".to_string(),
+            ":ID: 2025-05-01T12:00:00+0100".to_string(),
+            ":TAGS: test multiline".to_string(),
+            ":END:".to_string(),
+            "".to_string(),
+            "First line of content".to_string(),
+            "Second line with *formatting*".to_string(),
+            "Third line".to_string(),
+        ];
+        
+        let post = Post::from(post_lines);
+
+        assert_eq!(post.id(), "2025-05-01T12:00:00+0100");
+        assert_eq!(post.tags(), &Some(vec!["test".to_string(), "multiline".to_string()]));
+        
+        let content = post.content();
+        assert_eq!(content.lines().count(), 3);
+        assert!(content.contains("First line of content"));
+        assert!(content.contains("Second line with *formatting*"));
+        assert!(content.contains("Third line"));
+        
+        assert!(!post.tokens().is_empty());
+        assert!(post.tokens().iter().any(|t| matches!(t, Token::Bold(_))));
+    }
+
+    #[test]
+    fn test_blocks_parsing() {
+        let content_with_blocks = r#"Some text before
+
+#+BEGIN_SRC rust
+fn main() {
+    println!("Hello, world!");
+}
+#+END_SRC
+
+Some text after"#.to_string();
+        
+        let post = Post::new("test-id".to_string(), content_with_blocks);
+        
+        assert!(!post.blocks().is_empty());
+        assert_eq!(post.blocks().len(), 1);
     }
 }

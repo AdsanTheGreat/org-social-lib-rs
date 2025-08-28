@@ -202,6 +202,10 @@ impl Profile {
         self.source = source;
     }
 
+    pub fn set_nick(&mut self, nick: String) {
+        self.nick = nick;
+    }
+
     pub fn to_org_social(&self) -> String {
         let mut lines = Vec::new();
 
