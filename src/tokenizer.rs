@@ -1,13 +1,25 @@
+/// Represents a single token in the input text.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
+    /// Plain text token, fallback for when no implemented syntax is detected
     PlainText(String),
+    /// Bold text token
     Bold(String),
+    /// Italic text token
     Italic(String),
+    /// Bold and italic text token
     BoldItalic(String),
+    /// Link token
     Link {
         url: String,
         description: Option<String>,
     },
+    /// Org-social mention token
+    Mention {
+        url: String,
+        username: String,
+    },
+    /// Inline code token
     InlineCode(String),
 }
 
@@ -41,8 +53,12 @@ impl Tokenizer {
             return None;
         }
 
-        // Check for links first [[url][description]] or [[url]]
+        // Check for mentions first [[org-social:url][username]]
         if self.peek_chars(2) == "[[" {
+            if let Some(token) = self.parse_mention() {
+                return Some(token);
+            }
+            // If it's not a mention, try parsing as a regular link
             return self.parse_link();
         }
 
@@ -113,6 +129,45 @@ impl Tokenizer {
             self.advance(1);
         }
         
+        None
+    }
+
+    fn parse_mention(&mut self) -> Option<Token> {
+        if self.peek_chars(2) != "[[" {
+            return None;
+        }
+
+        let saved_position = self.position;
+        self.advance(2); // Skip [[
+        let start = self.position;
+        
+        // Find the closing ]]
+        while self.position < self.input.len() {
+            if self.peek_chars(2) == "]]" {
+                let content: String = self.input[start..self.position].iter().collect();
+                
+                // Check if it's a mention: org-social:url][username
+                if let Some(bracket_pos) = content.find("][") {
+                    let url_part = &content[..bracket_pos];
+                    let username = content[bracket_pos + 2..].to_string();
+                    
+                    // Check if URL part starts with "org-social:"
+                    if url_part.starts_with("org-social:") {
+                        let url = url_part[11..].to_string(); // Remove "org-social:" prefix
+                        self.advance(2); // Skip ]]
+                        return Some(Token::Mention { url, username });
+                    }
+                }
+                
+                // Not a mention, reset position
+                self.position = saved_position;
+                return None;
+            }
+            self.advance(1);
+        }
+        
+        // Reset position if we didn't find a valid mention
+        self.position = saved_position;
         None
     }
 
@@ -508,6 +563,77 @@ mod tests {
                 description: None,
             },
             Token::PlainText(" not italic".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_mention_basic() {
+        let mut tokenizer = Tokenizer::new("Contact [[org-social:http://example.org/social.org][username]]".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("Contact ".to_string()),
+            Token::Mention {
+                url: "http://example.org/social.org".to_string(),
+                username: "username".to_string(),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_mention_with_https() {
+        let mut tokenizer = Tokenizer::new("Hello [[org-social:https://social.example.com/user.org][alice]]!".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("Hello ".to_string()),
+            Token::Mention {
+                url: "https://social.example.com/user.org".to_string(),
+                username: "alice".to_string(),
+            },
+            Token::PlainText("!".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_mention_mixed_with_links() {
+        let mut tokenizer = Tokenizer::new("Visit [[https://example.com][site]] and talk to [[org-social:http://social.org/bob.org][bob]]".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("Visit ".to_string()),
+            Token::Link {
+                url: "https://example.com".to_string(),
+                description: Some("site".to_string()),
+            },
+            Token::PlainText(" and talk to ".to_string()),
+            Token::Mention {
+                url: "http://social.org/bob.org".to_string(),
+                username: "bob".to_string(),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_mention_without_org_social_prefix_fallback_to_link() {
+        let mut tokenizer = Tokenizer::new("This is [[http://example.com][regular link]]".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("This is ".to_string()),
+            Token::Link {
+                url: "http://example.com".to_string(),
+                description: Some("regular link".to_string()),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_mention_complex_username() {
+        let mut tokenizer = Tokenizer::new("Message [[org-social:https://myorg.example.com/profiles/alice.org][alice_123@domain]]".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("Message ".to_string()),
+            Token::Mention {
+                url: "https://myorg.example.com/profiles/alice.org".to_string(),
+                username: "alice_123@domain".to_string(),
+            },
         ]);
     }
 }
