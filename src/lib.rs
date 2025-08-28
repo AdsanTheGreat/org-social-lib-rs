@@ -40,6 +40,7 @@ pub mod blocks;
 pub mod feed;
 pub mod network;
 pub mod new_post;
+pub mod notifications;
 pub mod parser;
 pub mod post;
 pub mod profile;

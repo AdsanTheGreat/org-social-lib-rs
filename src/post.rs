@@ -16,7 +16,7 @@ use crate::blocks::{ActivatableElement, parse_blocks};
 /// 
 /// Contains post metadata, it's content, author and source information,
 /// as well as parsed tokens and blocks from the content.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[derive(Default)]
 pub struct Post {
     id: String,
