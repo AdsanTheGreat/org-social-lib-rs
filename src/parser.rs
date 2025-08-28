@@ -3,7 +3,6 @@
 //! This module provides functionality to parse and serialize complete
 //! org-social files containing profiles and posts.
 
-// Re-export types for backward compatibility
 pub use crate::profile::Profile;
 pub use crate::post::Post;
 
