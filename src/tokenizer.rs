@@ -9,6 +9,10 @@ pub enum Token {
     Italic(String),
     /// Bold and italic text token
     BoldItalic(String),
+    /// Strikethrough text token
+    Strikethrough(String),
+    /// Underline text token
+    Underline(String),
     /// Link token
     Link {
         url: String,
@@ -89,6 +93,20 @@ impl Tokenizer {
         // Check for inline code ~text~
         if self.peek_char() == '~' {
             if let Some(token) = self.parse_inline_code() {
+                return Some(token);
+            }
+        }
+
+        // Check for underline _text_
+        if self.peek_char() == '_' && self.position + 1 < self.input.len() {
+            if let Some(token) = self.parse_underline() {
+                return Some(token);
+            }
+        }
+
+        // Check for strikethrough +text+
+        if self.peek_char() == '+' && self.position + 1 < self.input.len() {
+            if let Some(token) = self.parse_strikethrough() {
                 return Some(token);
             }
         }
@@ -315,13 +333,67 @@ impl Tokenizer {
         None
     }
 
+    fn parse_underline(&mut self) -> Option<Token> {
+        if self.peek_char() != '_' {
+            return None;
+        }
+
+        self.advance(1); // Skip _
+        let start = self.position;
+        
+        // Find closing _
+        while self.position < self.input.len() {
+            if self.peek_char() == '_' {
+                let content: String = self.input[start..self.position].iter().collect();
+                if !content.is_empty() && !content.contains('\n') {
+                    self.advance(1); // Skip closing _
+                    return Some(Token::Underline(content));
+                } else {
+                    break;
+                }
+            }
+            self.advance(1);
+        }
+        
+        // Reset position if we didn't find a valid underline
+        self.position = start - 1;
+        None
+    }
+
+    fn parse_strikethrough(&mut self) -> Option<Token> {
+        if self.peek_char() != '+' {
+            return None;
+        }
+
+        self.advance(1); // Skip +
+        let start = self.position;
+        
+        // Find closing +
+        while self.position < self.input.len() {
+            if self.peek_char() == '+' {
+                let content: String = self.input[start..self.position].iter().collect();
+                if !content.is_empty() && !content.contains('\n') {
+                    self.advance(1); // Skip closing +
+                    return Some(Token::Strikethrough(content));
+                } else {
+                    break;
+                }
+            }
+            self.advance(1);
+        }
+        
+        // Reset position if we didn't find a valid strikethrough
+        self.position = start - 1;
+        None
+    }
+
     fn parse_plain_text(&mut self) -> Option<Token> {
         let start = self.position;
         
         // Consume characters until we hit a special character or potential URL
         while self.position < self.input.len() {
             let ch = self.peek_char();
-            if ch == '*' || ch == '/' || ch == '~' || ch == '[' {
+            if ch == '*' || ch == '/' || ch == '~' || ch == '[' || ch == '_' || ch == '+' {
                 break;
             }
             
@@ -352,9 +424,13 @@ impl Tokenizer {
         } else {
             // If we're at a special character but couldn't parse it, 
             // consume it as plain text
-            self.advance(1);
-            let content: String = self.input[start..self.position].iter().collect();
-            Some(Token::PlainText(content))
+            if self.position < self.input.len() {
+                self.advance(1);
+                let content: String = self.input[start..self.position].iter().collect();
+                Some(Token::PlainText(content))
+            } else {
+                None
+            }
         }
     }
 
@@ -634,6 +710,116 @@ mod tests {
                 url: "https://myorg.example.com/profiles/alice.org".to_string(),
                 username: "alice_123@domain".to_string(),
             },
+        ]);
+    }
+
+    #[test]
+    fn test_underline_text() {
+        let mut tokenizer = Tokenizer::new("This is _underlined_ text".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("This is ".to_string()),
+            Token::Underline("underlined".to_string()),
+            Token::PlainText(" text".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_strikethrough_text() {
+        let mut tokenizer = Tokenizer::new("This is +strikethrough+ text".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("This is ".to_string()),
+            Token::Strikethrough("strikethrough".to_string()),
+            Token::PlainText(" text".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_mixed_formatting_with_underline_strikethrough() {
+        let mut tokenizer = Tokenizer::new("*Bold* /italic/ _underlined_ +strikethrough+ text".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::Bold("Bold".to_string()),
+            Token::PlainText(" ".to_string()),
+            Token::Italic("italic".to_string()),
+            Token::PlainText(" ".to_string()),
+            Token::Underline("underlined".to_string()),
+            Token::PlainText(" ".to_string()),
+            Token::Strikethrough("strikethrough".to_string()),
+            Token::PlainText(" text".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_underline_empty_content() {
+        let mut tokenizer = Tokenizer::new("This is __ empty underline".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("This is ".to_string()),
+            Token::PlainText("_".to_string()),
+            Token::PlainText("_".to_string()),
+            Token::PlainText(" empty underline".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_strikethrough_empty_content() {
+        let mut tokenizer = Tokenizer::new("This is ++ empty strikethrough".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("This is ".to_string()),
+            Token::PlainText("+".to_string()),
+            Token::PlainText("+".to_string()),
+            Token::PlainText(" empty strikethrough".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_underline_with_newline() {
+        let mut tokenizer = Tokenizer::new("This _spans\nmultiple_ lines".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("This ".to_string()),
+            Token::PlainText("_".to_string()),
+            Token::PlainText("spans\nmultiple".to_string()),
+            Token::PlainText("_".to_string()),
+            Token::PlainText(" lines".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_strikethrough_with_newline() {
+        let mut tokenizer = Tokenizer::new("This +spans\nmultiple+ lines".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("This ".to_string()),
+            Token::PlainText("+".to_string()),
+            Token::PlainText("spans\nmultiple".to_string()),
+            Token::PlainText("+".to_string()),
+            Token::PlainText(" lines".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_underline_unclosed() {
+        let mut tokenizer = Tokenizer::new("This is _unclosed underline".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("This is ".to_string()),
+            Token::PlainText("_".to_string()),
+            Token::PlainText("unclosed underline".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_strikethrough_unclosed() {
+        let mut tokenizer = Tokenizer::new("This is +unclosed strikethrough".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("This is ".to_string()),
+            Token::PlainText("+".to_string()),
+            Token::PlainText("unclosed strikethrough".to_string()),
         ]);
     }
 }
