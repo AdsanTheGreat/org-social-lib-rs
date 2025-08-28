@@ -2,6 +2,14 @@
 name = "org-social-lib-rs"
 version = "0.1.0"
 edition = "2021"
+authors = ["AdsanTheGreat <me@adsan.dev>"]
+description = "A Rust library for parsing and interacting with Org-social decentralized social networks"
+license = "GPL-3.0"
+repository = "https://github.com/AdsanTheGreat/org-social-lib-rs"
+homepage = "https://github.com/AdsanTheGreat/org-social-lib-rs"
+readme = "README.md"
+keywords = ["org-mode", "social-network", "decentralized", "parser", "org-social"]
+categories = ["parser-implementations", "network-programming", "web-programming"]
 
 [dependencies]
 chrono = "0.4.41"

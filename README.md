@@ -39,8 +39,14 @@ In no particular order:
 
 ## Installation
 
-As of now, the crate is not on crates.io yet. As such, it has to be pulled in manually through git.
-To use the crate, add this to your `Cargo.toml`:
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+org-social-lib-rs = "0.1.0"
+```
+
+Or if you want to use the latest development version from git:
 
 ```toml
 [dependencies]
@@ -50,21 +56,20 @@ org-social-lib-rs = { git = "https://github.com/AdsanTheGreat/org-social-lib-rs"
 ## Quick Start
 
 ```rust
-use org_social_lib_rs::{parser, feed, network};
+use org_social_lib_rs::parser;
 
-// Parse a local org-social file
-let content = std::fs::read_to_string("social.org")?;
-let (profile, posts) = parser::parse_file(&content, "https://example.com/social.org")?;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Parse a local org-social file
+    let content = std::fs::read_to_string("social.org")?;
+    let (profile, posts) = parser::parse_file(&content, Some("https://example.com/social.org".to_string()));
 
-// Create a feed from multiple sources
-let client = reqwest::Client::new();
-let follow_urls = vec!["https://friend1.com/social.org", "https://friend2.com/social.org"];
-let combined_feed = feed::Feed::create_combined_feed(&follow_urls, &client).await?;
-
-// Access posts and profile information
-println!("Feed author: {}", profile.title);
-for post in posts {
-    println!("Post: {} - {}", post.id, post.content);
+    // Access posts and profile information
+    println!("Feed author: {}", profile.title());
+    for post in posts {
+        println!("Post: {} - {}", post.id(), post.content());
+    }
+    
+    Ok(())
 }
 ```
 
