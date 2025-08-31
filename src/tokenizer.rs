@@ -232,159 +232,61 @@ impl Tokenizer {
     }
 
     fn parse_bold_italic(&mut self) -> Option<Token> {
-        if self.peek_chars(2) != "*/" {
+        self.parse_delimited_text_multi("*/", "/*", false).map(Token::BoldItalic)
+    }
+
+    /// Generic function to parse text delimited by single character markers
+    fn parse_delimited_text(&mut self, delimiter: char, allow_newlines: bool) -> Option<String> {
+        let delimiter_str = delimiter.to_string();
+        self.parse_delimited_text_multi(&delimiter_str, &delimiter_str, allow_newlines)
+    }
+
+    /// Generic function to parse text delimited by multi-character markers
+    fn parse_delimited_text_multi(&mut self, open_delimiter: &str, close_delimiter: &str, allow_newlines: bool) -> Option<String> {
+        if self.peek_chars(open_delimiter.len()) != open_delimiter {
             return None;
         }
 
-        self.advance(2); // Skip */
+        self.advance(open_delimiter.len()); // Skip opening delimiter
         let start = self.position;
         
-        // Find closing /*
-        while self.position < self.input.len() - 1 {
-            if self.peek_chars(2) == "/*" {
+        // Find closing delimiter
+        while self.position <= self.input.len() - close_delimiter.len() {
+            if self.peek_chars(close_delimiter.len()) == close_delimiter {
                 let content: String = self.input[start..self.position].iter().collect();
-                self.advance(2); // Skip /*
-                return Some(Token::BoldItalic(content));
+                if !content.is_empty() && (allow_newlines || !content.contains('\n')) {
+                    self.advance(close_delimiter.len()); // Skip closing delimiter
+                    return Some(content);
+                } else {
+                    break;
+                }
             }
             self.advance(1);
         }
         
+        // Reset position if we didn't find valid content
+        self.position = start - open_delimiter.len();
         None
     }
 
     fn parse_bold(&mut self) -> Option<Token> {
-        if self.peek_char() != '*' {
-            return None;
-        }
-
-        self.advance(1); // Skip *
-        let start = self.position;
-        
-        // Find closing *
-        while self.position < self.input.len() {
-            if self.peek_char() == '*' {
-                let content: String = self.input[start..self.position].iter().collect();
-                if !content.is_empty() && !content.contains('\n') {
-                    self.advance(1); // Skip closing *
-                    return Some(Token::Bold(content));
-                } else {
-                    break;
-                }
-            }
-            self.advance(1);
-        }
-        
-        // Reset position if we didn't find a valid bold
-        self.position = start - 1;
-        None
+        self.parse_delimited_text('*', false).map(Token::Bold)
     }
 
     fn parse_italic(&mut self) -> Option<Token> {
-        if self.peek_char() != '/' {
-            return None;
-        }
-
-        self.advance(1); // Skip /
-        let start = self.position;
-        
-        // Find closing /
-        while self.position < self.input.len() {
-            if self.peek_char() == '/' {
-                let content: String = self.input[start..self.position].iter().collect();
-                if !content.is_empty() && !content.contains('\n') {
-                    self.advance(1); // Skip closing /
-                    return Some(Token::Italic(content));
-                } else {
-                    break;
-                }
-            }
-            self.advance(1);
-        }
-        
-        // Reset position if we didn't find a valid italic
-        self.position = start - 1;
-        None
+        self.parse_delimited_text('/', false).map(Token::Italic)
     }
 
     fn parse_inline_code(&mut self) -> Option<Token> {
-        if self.peek_char() != '~' {
-            return None;
-        }
-
-        self.advance(1); // Skip ~
-        let start = self.position;
-        
-        // Find closing ~
-        while self.position < self.input.len() {
-            if self.peek_char() == '~' {
-                let content: String = self.input[start..self.position].iter().collect();
-                if !content.is_empty() {
-                    self.advance(1); // Skip closing ~
-                    return Some(Token::InlineCode(content));
-                } else {
-                    break;
-                }
-            }
-            self.advance(1);
-        }
-        
-        // Reset position if we didn't find a valid code block
-        self.position = start - 1;
-        None
+        self.parse_delimited_text('~', true).map(Token::InlineCode)
     }
 
     fn parse_underline(&mut self) -> Option<Token> {
-        if self.peek_char() != '_' {
-            return None;
-        }
-
-        self.advance(1); // Skip _
-        let start = self.position;
-        
-        // Find closing _
-        while self.position < self.input.len() {
-            if self.peek_char() == '_' {
-                let content: String = self.input[start..self.position].iter().collect();
-                if !content.is_empty() && !content.contains('\n') {
-                    self.advance(1); // Skip closing _
-                    return Some(Token::Underline(content));
-                } else {
-                    break;
-                }
-            }
-            self.advance(1);
-        }
-        
-        // Reset position if we didn't find a valid underline
-        self.position = start - 1;
-        None
+        self.parse_delimited_text('_', false).map(Token::Underline)
     }
 
     fn parse_strikethrough(&mut self) -> Option<Token> {
-        if self.peek_char() != '+' {
-            return None;
-        }
-
-        self.advance(1); // Skip +
-        let start = self.position;
-        
-        // Find closing +
-        while self.position < self.input.len() {
-            if self.peek_char() == '+' {
-                let content: String = self.input[start..self.position].iter().collect();
-                if !content.is_empty() && !content.contains('\n') {
-                    self.advance(1); // Skip closing +
-                    return Some(Token::Strikethrough(content));
-                } else {
-                    break;
-                }
-            }
-            self.advance(1);
-        }
-        
-        // Reset position if we didn't find a valid strikethrough
-        self.position = start - 1;
-        None
+        self.parse_delimited_text('+', false).map(Token::Strikethrough)
     }
 
     fn parse_plain_text(&mut self) -> Option<Token> {
@@ -469,26 +371,26 @@ mod tests {
         assert_eq!(tokens, vec![Token::PlainText("Hello world".to_string())]);
     }
 
+    // Test all single-character delimited formatting types together
     #[test]
-    fn test_bold_text() {
-        let mut tokenizer = Tokenizer::new("This is *bold* text".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("This is ".to_string()),
-            Token::Bold("bold".to_string()),
-            Token::PlainText(" text".to_string()),
-        ]);
-    }
+    fn test_single_char_formatting() {
+        let test_cases = vec![
+            ("*bold*", Token::Bold("bold".to_string())),
+            ("/italic/", Token::Italic("italic".to_string())),
+            ("_underlined_", Token::Underline("underlined".to_string())),
+            ("+strikethrough+", Token::Strikethrough("strikethrough".to_string())),
+            ("~code~", Token::InlineCode("code".to_string())),
+        ];
 
-    #[test]
-    fn test_italic_text() {
-        let mut tokenizer = Tokenizer::new("This is /italic/ text".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("This is ".to_string()),
-            Token::Italic("italic".to_string()),
-            Token::PlainText(" text".to_string()),
-        ]);
+        for (input, expected_token) in test_cases {
+            let mut tokenizer = Tokenizer::new(format!("This is {} text", input));
+            let tokens = tokenizer.tokenize();
+            assert_eq!(tokens, vec![
+                Token::PlainText("This is ".to_string()),
+                expected_token,
+                Token::PlainText(" text".to_string()),
+            ], "Failed for input: {}", input);
+        }
     }
 
     #[test]
@@ -498,6 +400,119 @@ mod tests {
         assert_eq!(tokens, vec![
             Token::PlainText("This is ".to_string()),
             Token::BoldItalic("bold italic".to_string()),
+            Token::PlainText(" text".to_string()),
+        ]);
+    }
+
+    // Test that all formatting types (except inline code) reject newlines
+    #[test]
+    fn test_formatting_with_newlines_rejected() {
+        let formatting_chars = vec!['*', '/', '_', '+'];
+        
+        for delimiter in formatting_chars {
+            let input = format!("This {}spans\nmultiple{} lines", delimiter, delimiter);
+            let mut tokenizer = Tokenizer::new(input.clone());
+            let tokens = tokenizer.tokenize();
+            
+            // Should be parsed as separate plain text tokens
+            assert_eq!(tokens, vec![
+                Token::PlainText("This ".to_string()),
+                Token::PlainText(delimiter.to_string()),
+                Token::PlainText("spans\nmultiple".to_string()),
+                Token::PlainText(delimiter.to_string()),
+                Token::PlainText(" lines".to_string()),
+            ], "Failed for delimiter: {}", delimiter);
+        }
+    }
+
+    // Test that inline code allows newlines
+    #[test]
+    fn test_inline_code_allows_newlines() {
+        let mut tokenizer = Tokenizer::new("This ~spans\nmultiple~ lines".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("This ".to_string()),
+            Token::InlineCode("spans\nmultiple".to_string()),
+            Token::PlainText(" lines".to_string()),
+        ]);
+    }
+
+    // Test that all formatting types reject empty content
+    #[test]
+    fn test_formatting_empty_content_rejected() {
+        let test_cases = vec![
+            ("**", '*'),
+            ("//", '/'),
+            ("__", '_'),
+            ("++", '+'),
+            ("~~", '~'),
+        ];
+
+        for (input, delimiter) in test_cases {
+            let test_input = format!("This is {} empty", input);
+            let mut tokenizer = Tokenizer::new(test_input.clone());
+            let tokens = tokenizer.tokenize();
+            
+            // Should be parsed as separate plain text tokens
+            assert_eq!(tokens, vec![
+                Token::PlainText("This is ".to_string()),
+                Token::PlainText(delimiter.to_string()),
+                Token::PlainText(delimiter.to_string()),
+                Token::PlainText(" empty".to_string()),
+            ], "Failed for input: {}", input);
+        }
+    }
+
+    // Test that all formatting types handle unclosed delimiters
+    #[test]
+    fn test_formatting_unclosed_delimiters() {
+        let test_cases = vec![
+            ("*unclosed bold", '*'),
+            ("/unclosed italic", '/'),
+            ("_unclosed underline", '_'),
+            ("+unclosed strikethrough", '+'),
+            ("~unclosed code", '~'),
+        ];
+
+        for (input, delimiter) in test_cases {
+            let test_input = format!("This is {}", input);
+            let mut tokenizer = Tokenizer::new(test_input.clone());
+            let tokens = tokenizer.tokenize();
+            
+            // Should be parsed as separate plain text tokens
+            let expected_text = input.split_at(1);
+            assert_eq!(tokens, vec![
+                Token::PlainText("This is ".to_string()),
+                Token::PlainText(delimiter.to_string()),
+                Token::PlainText(expected_text.1.to_string()),
+            ], "Failed for input: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_mixed_formatting() {
+        let mut tokenizer = Tokenizer::new("*Bold* /italic/ _underlined_ +strikethrough+ ~code~".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::Bold("Bold".to_string()),
+            Token::PlainText(" ".to_string()),
+            Token::Italic("italic".to_string()),
+            Token::PlainText(" ".to_string()),
+            Token::Underline("underlined".to_string()),
+            Token::PlainText(" ".to_string()),
+            Token::Strikethrough("strikethrough".to_string()),
+            Token::PlainText(" ".to_string()),
+            Token::InlineCode("code".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_utf8_text() {
+        let mut tokenizer = Tokenizer::new("Hello 世界 *bold 中文* text".to_string());
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![
+            Token::PlainText("Hello 世界 ".to_string()),
+            Token::Bold("bold 中文".to_string()),
             Token::PlainText(" text".to_string()),
         ]);
     }
@@ -531,68 +546,25 @@ mod tests {
     }
 
     #[test]
-    fn test_inline_code() {
-        let mut tokenizer = Tokenizer::new("Use ~println!~ to print".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("Use ".to_string()),
-            Token::InlineCode("println!".to_string()),
-            Token::PlainText(" to print".to_string()),
-        ]);
-    }
+    fn test_url_parsing() {
+        let test_cases = vec![
+            ("http://example.com", "http://example.com"),
+            ("https://secure.example.com/path?query=value", "https://secure.example.com/path?query=value"),
+        ];
 
-    #[test]
-    fn test_mixed_formatting() {
-        let mut tokenizer = Tokenizer::new("*Bold* and /italic/ with [[https://example.com][link]]".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::Bold("Bold".to_string()),
-            Token::PlainText(" and ".to_string()),
-            Token::Italic("italic".to_string()),
-            Token::PlainText(" with ".to_string()),
-            Token::Link {
-                url: "https://example.com".to_string(),
-                description: Some("link".to_string()),
-            },
-        ]);
-    }
-
-    #[test]
-    fn test_utf8_text() {
-        let mut tokenizer = Tokenizer::new("Hello 世界 *bold 中文* text".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("Hello 世界 ".to_string()),
-            Token::Bold("bold 中文".to_string()),
-            Token::PlainText(" text".to_string()),
-        ]);
-    }
-
-    #[test]
-    fn test_url_http() {
-        let mut tokenizer = Tokenizer::new("Visit http://example.com for more info".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("Visit ".to_string()),
-            Token::Link {
-                url: "http://example.com".to_string(),
-                description: None,
-            },
-            Token::PlainText(" for more info".to_string()),
-        ]);
-    }
-
-    #[test]
-    fn test_url_https() {
-        let mut tokenizer = Tokenizer::new("Check https://secure.example.com/path?query=value".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("Check ".to_string()),
-            Token::Link {
-                url: "https://secure.example.com/path?query=value".to_string(),
-                description: None,
-            },
-        ]);
+        for (input, expected_url) in test_cases {
+            let test_input = format!("Visit {} for more", input);
+            let mut tokenizer = Tokenizer::new(test_input);
+            let tokens = tokenizer.tokenize();
+            assert_eq!(tokens, vec![
+                Token::PlainText("Visit ".to_string()),
+                Token::Link {
+                    url: expected_url.to_string(),
+                    description: None,
+                },
+                Token::PlainText(" for more".to_string()),
+            ], "Failed for URL: {}", input);
+        }
     }
 
     #[test]
@@ -710,116 +682,6 @@ mod tests {
                 url: "https://myorg.example.com/profiles/alice.org".to_string(),
                 username: "alice_123@domain".to_string(),
             },
-        ]);
-    }
-
-    #[test]
-    fn test_underline_text() {
-        let mut tokenizer = Tokenizer::new("This is _underlined_ text".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("This is ".to_string()),
-            Token::Underline("underlined".to_string()),
-            Token::PlainText(" text".to_string()),
-        ]);
-    }
-
-    #[test]
-    fn test_strikethrough_text() {
-        let mut tokenizer = Tokenizer::new("This is +strikethrough+ text".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("This is ".to_string()),
-            Token::Strikethrough("strikethrough".to_string()),
-            Token::PlainText(" text".to_string()),
-        ]);
-    }
-
-    #[test]
-    fn test_mixed_formatting_with_underline_strikethrough() {
-        let mut tokenizer = Tokenizer::new("*Bold* /italic/ _underlined_ +strikethrough+ text".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::Bold("Bold".to_string()),
-            Token::PlainText(" ".to_string()),
-            Token::Italic("italic".to_string()),
-            Token::PlainText(" ".to_string()),
-            Token::Underline("underlined".to_string()),
-            Token::PlainText(" ".to_string()),
-            Token::Strikethrough("strikethrough".to_string()),
-            Token::PlainText(" text".to_string()),
-        ]);
-    }
-
-    #[test]
-    fn test_underline_empty_content() {
-        let mut tokenizer = Tokenizer::new("This is __ empty underline".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("This is ".to_string()),
-            Token::PlainText("_".to_string()),
-            Token::PlainText("_".to_string()),
-            Token::PlainText(" empty underline".to_string()),
-        ]);
-    }
-
-    #[test]
-    fn test_strikethrough_empty_content() {
-        let mut tokenizer = Tokenizer::new("This is ++ empty strikethrough".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("This is ".to_string()),
-            Token::PlainText("+".to_string()),
-            Token::PlainText("+".to_string()),
-            Token::PlainText(" empty strikethrough".to_string()),
-        ]);
-    }
-
-    #[test]
-    fn test_underline_with_newline() {
-        let mut tokenizer = Tokenizer::new("This _spans\nmultiple_ lines".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("This ".to_string()),
-            Token::PlainText("_".to_string()),
-            Token::PlainText("spans\nmultiple".to_string()),
-            Token::PlainText("_".to_string()),
-            Token::PlainText(" lines".to_string()),
-        ]);
-    }
-
-    #[test]
-    fn test_strikethrough_with_newline() {
-        let mut tokenizer = Tokenizer::new("This +spans\nmultiple+ lines".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("This ".to_string()),
-            Token::PlainText("+".to_string()),
-            Token::PlainText("spans\nmultiple".to_string()),
-            Token::PlainText("+".to_string()),
-            Token::PlainText(" lines".to_string()),
-        ]);
-    }
-
-    #[test]
-    fn test_underline_unclosed() {
-        let mut tokenizer = Tokenizer::new("This is _unclosed underline".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("This is ".to_string()),
-            Token::PlainText("_".to_string()),
-            Token::PlainText("unclosed underline".to_string()),
-        ]);
-    }
-
-    #[test]
-    fn test_strikethrough_unclosed() {
-        let mut tokenizer = Tokenizer::new("This is +unclosed strikethrough".to_string());
-        let tokens = tokenizer.tokenize();
-        assert_eq!(tokens, vec![
-            Token::PlainText("This is ".to_string()),
-            Token::PlainText("+".to_string()),
-            Token::PlainText("unclosed strikethrough".to_string()),
         ]);
     }
 }

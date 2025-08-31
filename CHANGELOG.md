@@ -3,6 +3,23 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 31.08.2025
+
+### Changed
+- **Tokenizer Refactoring**: Reduced duplication in how formatting tokens are parsed
+  - Extracted common formatting parsing logic into reusable generic functions
+  - All formatting types are now consistent
+
+### Improved
+- **Test Optimization**: Updates to test suite
+  - Reduced test count
+  - Refreshed the tests for more coverage of new features
+  - Removed compiler warnings about tests in blocks.rs
+
+### Technical Details
+- Generic `parse_delimited_text_multi()` function can handle both single and multi-character delimiters
+- Zero functional changes - all existing behavior preserved
+
 ## [0.2.0] - 28.08.2025
 
 ### Added

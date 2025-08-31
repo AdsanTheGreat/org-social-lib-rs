@@ -208,13 +208,12 @@ Some text after"#;
         let elements = parse_blocks(content);
         assert_eq!(elements.len(), 1);
         
-        if let ActivatableElement::Block(block) = &elements[0] {
-            assert_eq!(block.block_type, "src");
-            assert_eq!(block.attributes, Some("rust".to_string()));
-            assert_eq!(block.start_line, 1);
-            assert_eq!(block.end_line, 5);
-            assert!(block.content.contains("fn hello()"));
-        }
+        let ActivatableElement::Block(block) = &elements[0];
+        assert_eq!(block.block_type, "src");
+        assert_eq!(block.attributes, Some("rust".to_string()));
+        assert_eq!(block.start_line, 1);
+        assert_eq!(block.end_line, 5);
+        assert!(block.content.contains("fn hello()"));
     }
 
     #[test]
@@ -229,13 +228,12 @@ Text after"#;
         let elements = parse_blocks(content);
         assert_eq!(elements.len(), 1);
         
-        if let ActivatableElement::Block(block) = &elements[0] {
-            assert_eq!(block.block_type, "quote");
-            assert_eq!(block.attributes, None);
-            assert_eq!(block.start_line, 1);
-            assert_eq!(block.end_line, 4);
-            assert!(block.content.contains("This is a quote"));
-        }
+        let ActivatableElement::Block(block) = &elements[0];
+        assert_eq!(block.block_type, "quote");
+        assert_eq!(block.attributes, None);
+        assert_eq!(block.start_line, 1);
+        assert_eq!(block.end_line, 4);
+        assert!(block.content.contains("This is a quote"));
     }
 
     #[test]
@@ -271,14 +269,12 @@ Text after"#;
         let elements = parse_blocks(content);
         assert_eq!(elements.len(), 2);
         
-        if let ActivatableElement::Block(block1) = &elements[0] {
-            assert_eq!(block1.block_type, "src");
-            assert_eq!(block1.start_line, 1);
-        }
+        let ActivatableElement::Block(block1) = &elements[0];
+        assert_eq!(block1.block_type, "src");
+        assert_eq!(block1.start_line, 1);
         
-        if let ActivatableElement::Block(block2) = &elements[1] {
-            assert_eq!(block2.block_type, "quote");
-            assert_eq!(block2.start_line, 5);
-        }
+        let ActivatableElement::Block(block2) = &elements[1];
+        assert_eq!(block2.block_type, "quote");
+        assert_eq!(block2.start_line, 5);
     }
 }
