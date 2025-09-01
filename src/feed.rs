@@ -31,7 +31,7 @@ impl Feed {
         }
         
         // Fetch posts from followed users
-        let followed_feeds = network::get_feeds_from_profile(user_profile).await;
+        let followed_feeds = network::get_feeds_from_profile_with_timeout(user_profile).await;
         
         // Add posts from followed users with their nick as author
         for (profile, posts, _source) in followed_feeds {
