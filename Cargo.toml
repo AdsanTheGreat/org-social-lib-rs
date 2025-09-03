@@ -1,6 +1,6 @@
 [package]
 name = "org-social-lib-rs"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 authors = ["AdsanTheGreat <me@adsan.dev>"]
 description = "A Rust library for parsing and interacting with Org-social decentralized social networks"

@@ -3,6 +3,11 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 3-09-2025
+### Fixed
+- **Bug Fix**: Corrected `update_poll_node` method signature
+  - Changed `&mut self` to `&self`, it does not need to be mutable
+
 ## [0.3.0] - 3-09-2025
 
 ### Added
