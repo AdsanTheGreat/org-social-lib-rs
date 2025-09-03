@@ -3,7 +3,7 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 3-09-2025
 
 ### Added
 - **Poll Feature**: Support for polls in posts
@@ -28,19 +28,22 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
   - Enhanced content parsing to include poll detection
 - **Thread integration**: Integrated poll updates into thread management
   - Added `update_poll_node` method to `ThreadNode` for updating polls
+- **Mention Enhancements**: Added methods to enable getting from a nickname to an org-social mention
+  - Added `create_follow_map` method to `Profile` struct - creates a mapping of followed nicknames to their corresponding urls
+  - Added `parse_followed_nickname_to_mention` method to `Profile` struct - serializes a nickname into a full org-social mention string
 
 ### Technical Details
 - Poll options extracted from content lines starting with "- [ ]"
 - Vote counting by analyzing replies with matching `poll_option` field
 
-## [0.2.2] - 1.09.2025
+## [0.2.2] - 1-09-2025
 
 ### Added
 - **Timeout Support**: Introduced optional timeout for feed fetching
   - Added `timeout` parameter to `get_feeds` and `get_feeds_from_profile` functions
   - Default timeout of 30 seconds applied in convenience functions
 
-## [0.2.1] - 31.08.2025
+## [0.2.1] - 31-08-2025
 
 ### Changed
 - **Tokenizer Refactoring**: Reduced duplication in how formatting tokens are parsed
@@ -57,7 +60,7 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
 - Generic `parse_delimited_text_multi()` function can handle both single and multi-character delimiters
 - Zero functional changes - all existing behavior preserved
 
-## [0.2.0] - 28.08.2025
+## [0.2.0] - 28-08-2025
 
 ### Added
 - **New tokens**: Introduced new org-mode token
