@@ -3,7 +3,7 @@
 //! This module provides functionality to organize posts into threaded conversations
 //! based on reply relationships, creating hierarchical tree structures for display.
 
-use crate::post::Post;
+use crate::{poll::Poll, post::Post};
 use std::collections::HashMap;
 
 /// Represents a node in a threaded conversation tree.
@@ -277,6 +277,13 @@ impl ThreadView {
 
     pub fn is_empty(&self) -> bool {
         self.roots.is_empty()
+    }
+
+    pub fn update_poll_node(&mut self, post_node: &ThreadNode, poll: &mut Poll) {
+        poll.clear_votes();
+        for reply in &post_node.replies {
+            poll.add_vote_from_reply(&reply.post);
+        }
     }
 }
 

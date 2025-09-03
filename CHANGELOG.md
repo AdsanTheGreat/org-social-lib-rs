@@ -3,6 +3,36 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Poll Feature**: Support for polls in posts
+  - Added `poll` module with `Poll`, `PollOption`, and `PollStatus` types
+  - Poll detection: Posts with `poll_end` timestamp and "- [ ]" options
+  - Poll parsing: Extract poll options from post content
+  - Poll voting: Create reply posts with `poll_option` field to vote
+  - Poll results: Count votes and calculate percentages from replies
+  - Poll status tracking: Automatic active/ended status based on timestamps
+- **Blocks Integration**: Extended activatable elements to include polls
+  - Added `Poll` variant to `ActivatableElement` enum
+  - Poll blocks can be collapsed/expanded like other content blocks
+  - Integrated poll parsing into `parse_blocks_with_poll_end` function
+- **Reply System Enhancement**: Extended reply functionality for poll voting
+  - Added `PollOption` field to `ReplyField` enum
+  - Poll vote creation through reply system
+  - Helper function `create_poll_vote` for easy vote replies
+- **Post Enhancements**: Added poll-related methods to Post struct
+  - `is_poll()`: Check if post contains a poll
+  - `get_poll()`: Extract poll data from post
+  - `is_poll_vote()`: Check if post is a poll vote
+  - Enhanced content parsing to include poll detection
+- **Thread integration**: Integrated poll updates into thread management
+  - Added `update_poll_node` method to `ThreadNode` for updating polls
+
+### Technical Details
+- Poll options extracted from content lines starting with "- [ ]"
+- Vote counting by analyzing replies with matching `poll_option` field
+
 ## [0.2.2] - 1.09.2025
 
 ### Added

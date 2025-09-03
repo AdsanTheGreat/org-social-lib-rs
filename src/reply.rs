@@ -14,6 +14,7 @@ pub enum ReplyField {
     Content,
     Tags,
     Mood,
+    PollOption,
 }
 
 pub struct ReplyState {
@@ -21,12 +22,14 @@ pub struct ReplyState {
     pub tags: Vec<String>,
     pub tags_input: String,
     pub mood: String,
+    pub poll_option: String,
     pub current_field: ReplyField,
     pub reply_to_id: String,
     // Cursor positions for each field
     pub content_cursor: usize,
     pub tags_input_cursor: usize,
     pub mood_cursor: usize,
+    pub poll_option_cursor: usize,
 }
 
 impl ReplyState {
@@ -36,11 +39,13 @@ impl ReplyState {
             tags: initial_tags.unwrap_or_default(),
             tags_input: String::new(),
             mood: String::new(),
+            poll_option: String::new(),
             current_field: ReplyField::Content,
             reply_to_id,
             content_cursor: 0,
             tags_input_cursor: 0,
             mood_cursor: 0,
+            poll_option_cursor: 0,
         }
     }
 
@@ -57,6 +62,10 @@ impl ReplyState {
             ReplyField::Mood => {
                 self.mood.insert(self.mood_cursor, c);
                 self.mood_cursor += 1;
+            }
+            ReplyField::PollOption => {
+                self.poll_option.insert(self.poll_option_cursor, c);
+                self.poll_option_cursor += 1;
             }
         }
     }
@@ -81,6 +90,12 @@ impl ReplyState {
                     self.mood.remove(self.mood_cursor);
                 }
             }
+            ReplyField::PollOption => {
+                if self.poll_option_cursor > 0 {
+                    self.poll_option_cursor -= 1;
+                    self.poll_option.remove(self.poll_option_cursor);
+                }
+            }
         }
     }
 
@@ -98,16 +113,18 @@ impl ReplyState {
         self.current_field = match self.current_field {
             ReplyField::Content => ReplyField::Tags,
             ReplyField::Tags => ReplyField::Mood,
-            ReplyField::Mood => ReplyField::Content,
+            ReplyField::Mood => ReplyField::PollOption,
+            ReplyField::PollOption => ReplyField::Content,
         };
         self.update_cursor_position();
     }
 
     pub fn prev_field(&mut self) {
         self.current_field = match self.current_field {
-            ReplyField::Content => ReplyField::Mood,
+            ReplyField::Content => ReplyField::PollOption,
             ReplyField::Tags => ReplyField::Content,
             ReplyField::Mood => ReplyField::Tags,
+            ReplyField::PollOption => ReplyField::Mood,
         };
         self.update_cursor_position();
     }
@@ -122,6 +139,9 @@ impl ReplyState {
             }
             ReplyField::Mood => {
                 self.mood_cursor = self.mood.len();
+            }
+            ReplyField::PollOption => {
+                self.poll_option_cursor = self.poll_option.len();
             }
         }
     }
@@ -147,6 +167,7 @@ impl ReplyState {
             ReplyField::Content => self.content_cursor,
             ReplyField::Tags => self.tags_input_cursor,
             ReplyField::Mood => self.mood_cursor,
+            ReplyField::PollOption => self.poll_option_cursor,
         }
     }
 
@@ -155,6 +176,7 @@ impl ReplyState {
             ReplyField::Content => &self.content,
             ReplyField::Tags => &self.tags_input,
             ReplyField::Mood => &self.mood,
+            ReplyField::PollOption => &self.poll_option,
         }
     }
 
@@ -179,7 +201,22 @@ impl ReplyState {
             post.set_mood(Some(self.mood.trim().to_string()));
         }
         
+        if !self.poll_option.trim().is_empty() {
+            post.set_poll_option(Some(self.poll_option.trim().to_string()));
+        }
+        
         Ok(format!("\n{}", post.to_org_social()))
+    }
+
+    /// Create a poll vote reply
+    pub fn create_poll_vote(&self, poll_option: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let vote_reply = crate::poll::create_vote_reply(
+            &self.reply_to_id,
+            poll_option,
+            Some(&self.content)
+        );
+        
+        Ok(format!("\n{}", vote_reply.to_org_social()))
     }
 }
 
