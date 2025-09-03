@@ -3,6 +3,8 @@
 //! This module contains the Profile struct and its implementations
 //! for parsing and serializing user profile metadata.
 
+use std::collections::HashMap;
+
 /// Represents a user profile parsed from an org-social file.
 /// 
 /// Contains metadata about the user.
@@ -66,12 +68,19 @@ impl From<Vec<String>> for Profile {
                         if follow.is_none() {
                             follow = Some(Vec::new());
                         }
-                        // Parse "nick url" format
+                        // Parse "nick url" format or "url"
                         let follow_parts: Vec<&str> = parts[1].trim().splitn(2, ' ').collect();
                         if follow_parts.len() == 2 {
                             follow.as_mut().unwrap().push((
                                 follow_parts[0].to_string(),
                                 follow_parts[1].to_string(),
+                            ));
+                        } else if follow_parts.len() == 1 {
+                            // If only url is provided, use empty string for nick, as per:
+                            // https://github.com/tanrax/org-social/issues/18#issuecomment-3245769906
+                            follow.as_mut().unwrap().push((
+                                String::new(),
+                                follow_parts[0].to_string(),
                             ));
                         }
                     }
@@ -244,5 +253,32 @@ impl Profile {
         }
 
         lines.join("\n")
+    }
+
+    pub fn create_follow_map(&self) -> HashMap<String, String> {
+        let mut follow_map = HashMap::new();
+        if let Some(follows) = &self.follow {
+            for (name, url) in follows {
+                follow_map.insert(name.clone(), url.clone());
+            }
+        }
+        follow_map
+    }
+
+    /// Parses a followed user's nickname to an org-social mention syntax
+    pub fn parse_followed_nickname_to_mention(&self, text: &str) -> Option<String> {
+        let follow_map = self.create_follow_map();
+        let mut result = text.to_string();
+        if result.starts_with('@') {
+            result = result.trim_start_matches('@').to_string();
+        }
+
+        if let Some(url) = follow_map.get(&result) {
+            result = format!("[[org-social:{}][@{}]]", url, result);
+        } else {
+            return None;
+        }
+
+        Some(result)
     }
 }

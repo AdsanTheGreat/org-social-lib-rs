@@ -10,7 +10,7 @@ use chrono::{DateTime, FixedOffset};
 use crate::profile::Profile;
 use crate::util;
 use crate::tokenizer::{Token, Tokenizer};
-use crate::blocks::{ActivatableElement, parse_blocks};
+use crate::blocks::{ActivatableElement, parse_blocks_with_poll_end};
 
 /// Represents a post parsed from an org-social file.
 /// 
@@ -183,7 +183,7 @@ impl Post {
         let mut tokenizer = Tokenizer::new(self.content.clone());
         self.tokens = tokenizer.tokenize();
         
-        self.blocks = parse_blocks(&self.content);
+        self.blocks = parse_blocks_with_poll_end(&self.content, self.poll_end.clone());
     }
 
     pub fn tokens(&self) -> &[Token] {
@@ -290,6 +290,18 @@ impl Post {
 
     pub fn set_poll_option(&mut self, poll_option: Option<String>) {
         self.poll_option = poll_option;
+    }
+
+    pub fn is_poll(&self) -> bool {
+        crate::poll::is_poll_post(self)
+    }
+
+    pub fn get_poll(&self) -> Option<crate::poll::Poll> {
+        crate::poll::parse_poll_from_post(self)
+    }
+
+    pub fn is_poll_vote(&self) -> bool {
+        self.poll_option.is_some() && self.reply_to.is_some()
     }
 
     pub fn full_id(&self) -> String {

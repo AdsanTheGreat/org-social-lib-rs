@@ -1,8 +1,9 @@
 //! Org-mode block parsing and handling.
 //!
 //! This module provides functionality to parse and manage org-mode blocks
-//! such as code blocks, quotes, examples, etc.
+//! such as code blocks, quotes, examples, polls, etc.
 use std::collections::HashMap;
+use crate::poll::{Poll, parse_poll_from_content};
 
 /// Represents a collapsible org-mode block
 #[derive(Debug, Clone, PartialEq)]
@@ -19,30 +20,35 @@ pub struct OrgBlock {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActivatableElement {
     Block(OrgBlock),
+    Poll(Poll),
 }
 
 impl ActivatableElement {
     pub fn start_line(&self) -> usize {
         match self {
             ActivatableElement::Block(block) => block.start_line,
+            ActivatableElement::Poll(poll) => poll.start_line,
         }
     }
 
     pub fn end_line(&self) -> usize {
         match self {
             ActivatableElement::Block(block) => block.end_line,
+            ActivatableElement::Poll(poll) => poll.end_line,
         }
     }
 
     pub fn is_collapsed(&self) -> bool {
         match self {
             ActivatableElement::Block(block) => block.is_collapsed,
+            ActivatableElement::Poll(_poll) => false,
         }
     }
 
     pub fn toggle_collapsed(&mut self) {
         match self {
             ActivatableElement::Block(block) => block.is_collapsed = !block.is_collapsed,
+            ActivatableElement::Poll(_poll) => {},
         }
     }
 
@@ -63,21 +69,37 @@ impl ActivatableElement {
                     type_display.to_string()
                 }
             }
+            ActivatableElement::Poll(poll) => poll.get_summary(),
         }
     }
 
     pub fn get_content(&self) -> &str {
         match self {
             ActivatableElement::Block(block) => &block.content,
+            ActivatableElement::Poll(_poll) => "", // Polls don't have content, maybe it should be their options?
         }
     }
 }
 
 /// Parse org-mode blocks from content and return activatable elements
 pub fn parse_blocks(content: &str) -> Vec<ActivatableElement> {
+    parse_blocks_with_poll_end(content, None)
+}
+
+/// Parse org-mode blocks from content with optional poll_end for poll detection
+pub fn parse_blocks_with_poll_end(content: &str, poll_end: Option<String>) -> Vec<ActivatableElement> {
     let lines: Vec<&str> = content.lines().collect();
     let mut elements = Vec::new();
     let mut i = 0;
+
+    // First, try to parse a poll if poll_end is provided
+    if let Some(poll) = parse_poll_from_content(content, poll_end) {
+        elements.push(ActivatableElement::Poll(poll));
+        // Skip lines that are part of the poll
+        while i <= elements[0].end_line() && i < lines.len() {
+            i += 1;
+        }
+    }
 
     while i < lines.len() {
         let line = lines[i].trim();
@@ -160,6 +182,7 @@ pub fn process_content_with_blocks(content: &str, collapsed_blocks: &HashMap<usi
         if let Some(&is_collapsed) = collapsed_blocks.get(&element.start_line()) {
             match element {
                 ActivatableElement::Block(block) => block.is_collapsed = is_collapsed,
+                ActivatableElement::Poll(_poll) => {}, // Polls don't support collapsing
             }
         }
     }
@@ -208,12 +231,15 @@ Some text after"#;
         let elements = parse_blocks(content);
         assert_eq!(elements.len(), 1);
         
-        let ActivatableElement::Block(block) = &elements[0];
-        assert_eq!(block.block_type, "src");
-        assert_eq!(block.attributes, Some("rust".to_string()));
-        assert_eq!(block.start_line, 1);
-        assert_eq!(block.end_line, 5);
-        assert!(block.content.contains("fn hello()"));
+        if let ActivatableElement::Block(block) = &elements[0] {
+            assert_eq!(block.block_type, "src");
+            assert_eq!(block.attributes, Some("rust".to_string()));
+            assert_eq!(block.start_line, 1);
+            assert_eq!(block.end_line, 5);
+            assert!(block.content.contains("fn hello()"));
+        } else {
+            panic!("Expected Block element");
+        }
     }
 
     #[test]
@@ -228,12 +254,15 @@ Text after"#;
         let elements = parse_blocks(content);
         assert_eq!(elements.len(), 1);
         
-        let ActivatableElement::Block(block) = &elements[0];
-        assert_eq!(block.block_type, "quote");
-        assert_eq!(block.attributes, None);
-        assert_eq!(block.start_line, 1);
-        assert_eq!(block.end_line, 4);
-        assert!(block.content.contains("This is a quote"));
+        if let ActivatableElement::Block(block) = &elements[0] {
+            assert_eq!(block.block_type, "quote");
+            assert_eq!(block.attributes, None);
+            assert_eq!(block.start_line, 1);
+            assert_eq!(block.end_line, 4);
+            assert!(block.content.contains("This is a quote"));
+        } else {
+            panic!("Expected Block element");
+        }
     }
 
     #[test]
@@ -269,12 +298,40 @@ Text after"#;
         let elements = parse_blocks(content);
         assert_eq!(elements.len(), 2);
         
-        let ActivatableElement::Block(block1) = &elements[0];
-        assert_eq!(block1.block_type, "src");
-        assert_eq!(block1.start_line, 1);
+        if let ActivatableElement::Block(block1) = &elements[0] {
+            assert_eq!(block1.block_type, "src");
+            assert_eq!(block1.start_line, 1);
+        } else {
+            panic!("Expected Block element");
+        }
         
-        let ActivatableElement::Block(block2) = &elements[1];
-        assert_eq!(block2.block_type, "quote");
-        assert_eq!(block2.start_line, 5);
+        if let ActivatableElement::Block(block2) = &elements[1] {
+            assert_eq!(block2.block_type, "quote");
+            assert_eq!(block2.start_line, 5);
+        } else {
+            panic!("Expected Block element");
+        }
+    }
+
+    #[test]
+    fn test_parse_poll_block() {
+        let content = r#"What's your favorite color?
+- [ ] Red
+- [ ] Blue
+- [ ] Green"#;
+
+        let poll_end = Some("2030-01-01T12:00:00+00:00".to_string());
+        let elements = parse_blocks_with_poll_end(content, poll_end);
+        assert_eq!(elements.len(), 1);
+        
+        if let ActivatableElement::Poll(poll) = &elements[0] {
+            assert_eq!(poll.options.len(), 3);
+            assert_eq!(poll.options[0].text, "Red");
+            assert_eq!(poll.options[1].text, "Blue");
+            assert_eq!(poll.options[2].text, "Green");
+            assert!(poll.is_active());
+        } else {
+            panic!("Expected Poll element");
+        }
     }
 }

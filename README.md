@@ -2,7 +2,7 @@
 
 A Rust library for parsing and interacting with [Org-social](https://github.com/tanrax/org-social) decentralized social networks.
 
-Current version is targeting 1.1 release.
+Current version is targeting 1.2 release.
 
 ## Overview
 
@@ -17,6 +17,8 @@ It basically constitutes the backend of any org-social application.
 - **Feed Aggregation**: Combine multiple feeds into a unified, chronologically sorted feed
 - **Post Management**: Create, parse, and manage social posts with metadata
 - **Reply Handling**: Parse and create replies between posts
+- **Notifications support**: Get the most important notifications for a user
+- **Poll support**: Create and manage polls within posts
 
 ### File Format
 
@@ -29,13 +31,10 @@ In no particular order:
   - Embeds
   - Tables
   - Latex - maybe
-  - Mentions
   - Lists
-  - Polls
 - Network exploration - view not followed users
 - Gathering notifications - mentions & replies
 - Documentation
-- Publish on crates.io
 
 ## Installation
 
@@ -43,7 +42,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-org-social-lib-rs = "0.1.0"
+org-social-lib-rs = "0.3.0"
 ```
 
 Or if you want to use the latest development version from git:
