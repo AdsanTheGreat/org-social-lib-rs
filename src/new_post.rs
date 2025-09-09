@@ -7,6 +7,8 @@
 use crate::util;
 use crate::post::Post;
 
+/// State of a new post being constructed.
+#[derive(Debug, Clone)]
 pub struct NewPostState {
     pub lang: String,
     pub tags: Vec<String>,
