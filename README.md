@@ -16,13 +16,12 @@ It basically constitutes the backend of any org-social application.
 - **Threading System**: Build threaded conversation view from reply relationships
 - **Feed Aggregation**: Combine multiple feeds into a unified, chronologically sorted feed
 - **Post Management**: Create, parse, and manage social posts with metadata
-- **Reply Handling**: Parse and create replies between posts
 - **Notifications support**: Get the most important notifications for a user
-- **Poll support**: Create and manage polls within posts
+- **Poll support**: Manage posts with polls
 
 ### File Format
 
-org-social-rs works with org-social files as-specified in current target release, with some exceptions where I've noticed people differ. The parsing is very unstable, it will probably explode if there are any major changes.
+org-social-rs works with org-social files as-specified in current target release, with some exceptions where I've noticed people differ. The parsing is very unstable, it is prone to breakage if the format changes.
 
 ## TODO
 In no particular order:
@@ -33,7 +32,6 @@ In no particular order:
   - Latex - maybe
   - Lists
 - Network exploration - view not followed users
-- Gathering notifications - mentions & replies
 - Documentation
 
 ## Installation
@@ -42,7 +40,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-org-social-lib-rs = "0.3.0"
+org-social-lib-rs = "0.4.0"
 ```
 
 Or if you want to use the latest development version from git:
@@ -51,6 +49,9 @@ Or if you want to use the latest development version from git:
 [dependencies]
 org-social-lib-rs = { git = "https://github.com/AdsanTheGreat/org-social-lib-rs" }
 ```
+
+### Optional Features
+- `autotokenize` - Automatically parse post content into tokens and blocks when creating or modifying posts. Disabled by default for performance reasons (and it's not always needed to tokenize everything). If disabled, the `parse_content()` method has to be called manually to parse the content.
 
 ## Quick Start
 
@@ -74,10 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Documentation
 
-Currently, the only documentation are the documenting comments. They are very WIP, inconsitent and usually not enough. In near future, it is to be expanded into a proper crate documentation.
-
-
-
+Currently, the only documentation are the documenting comments. They are very WIP, inconsitent and usually not enough.
 
 ## Applications Using This Library
 
@@ -85,7 +83,8 @@ Currently, the only documentation are the documenting comments. They are very WI
 
 ## Contributing
 
-Report issues (there are probably a lot of them), submit pull requests, help is welcome.
+Report issues, submit pull requests, help is welcome.
+You can also reach out at org-social itself.
 
 ## License
 
