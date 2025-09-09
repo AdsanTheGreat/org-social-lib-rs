@@ -14,6 +14,31 @@ use crate::util;
 use crate::tokenizer::{Token, Tokenizer};
 use crate::blocks::{ActivatableElement, parse_blocks_with_poll_end};
 
+/// Represents the type of a post based on its properties.
+/// Used for categorizing posts as regular posts, polls, replies, or votes.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PostType {
+    /// A non-reply post that is not a poll, a standalone standard post.
+    Regular,
+    /// A post that contains a poll.
+    /// Could in theory be a reply.
+    Poll,
+    /// A reply to another post, not a poll vote, with content.
+    Reply,
+    /// A reply that is not a poll vote, has empty content - probably a mood set.
+    Reaction,
+    /// A reply that is a poll vote.
+    PollVote,
+    /// A reply that is a poll vote, but has no content.
+    SimplePollVote,
+}
+
+impl Default for PostType {
+    fn default() -> Self {
+        PostType::Regular
+    }
+}
+
 /// Represents a post parsed from an org-social file.
 /// 
 /// Contains post metadata, it's content, author and source information,
@@ -216,6 +241,17 @@ impl Post {
         }
     }
 
+    pub fn post_type(&self) -> PostType {
+        match (self.is_poll(), self.is_poll_vote(), self.is_reply(), self.is_empty()) {
+            (true, _, _, _) => PostType::Poll,
+            (_, true, _, true) => PostType::SimplePollVote,
+            (_, true, _, false) => PostType::PollVote,
+            (_, _, true, true) => PostType::Reaction,
+            (_, _, true, false) => PostType::Reply,
+            _ => PostType::Regular,
+        }
+    }
+
     pub fn source(&self) -> &Option<String> {
         &self.source
     }
@@ -326,6 +362,14 @@ impl Post {
 
     pub fn is_poll_vote(&self) -> bool {
         self.poll_option.is_some() && self.reply_to.is_some()
+    }
+
+    pub fn is_reply(&self) -> bool {
+        self.reply_to.is_some()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.content.trim().is_empty()
     }
 
     pub fn full_id(&self) -> String {
