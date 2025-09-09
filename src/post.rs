@@ -157,6 +157,43 @@ impl From<Vec<String>> for Post {
             content.pop();
         }
 
+        // Empty strings should be treated as None for optional fields
+        if let Some(mood_string) = &mood {
+            if mood_string.trim().is_empty() {
+                mood = None;
+            }
+        }
+        if let Some(lang_string) = &lang {
+            if lang_string.trim().is_empty() {
+                lang = None;
+            }
+        }
+        if let Some(tags_vec) = &tags {
+            if tags_vec.is_empty() {
+                tags = None;
+            }
+        }
+        if let Some(client_string) = &client {
+            if client_string.trim().is_empty() {
+                client = None;
+            }
+        }
+        if let Some(reply_to_string) = &reply_to {
+            if reply_to_string.trim().is_empty() {
+                reply_to = None;
+            }
+        }
+        if let Some(poll_end_string) = &poll_end {
+            if poll_end_string.trim().is_empty() {
+                poll_end = None;
+            }
+        }
+        if let Some(poll_option_string) = &poll_option {
+            if poll_option_string.trim().is_empty() {
+                poll_option = None;
+            }
+        }
+
         let mut post = Post {
             id,
             lang,
