@@ -15,6 +15,7 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
 
 ### Changed
   - **Moved** the post's file saving logic to the Post struct
+  - **Thread view**: now sorts by latest activity time in a thread, not the root post time
   - **New Post to Post**: `NewPostManager::create_new_post()` is now `NewPostManager::create_post()`
     - Takes in the client name to set on the post
     - Returns a `Post` now
@@ -24,6 +25,8 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
     - Manual parsing will have to be called explicitly if the feature is disabled
   
 ### Added
+  - **Thread view**: now has a method to insert a post into the tree after the fact
+    - Expensive operation for replies, as the tree has to be searched recursively for the parent post
   - **New Post Expansion**: It now has helpers and fields to also be a reply or a vote
   - `Post` has a helper function to summarize it's content as first n chars - due to lack of title structure
 
