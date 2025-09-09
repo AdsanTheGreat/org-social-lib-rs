@@ -4,6 +4,8 @@
 //! for parsing and serializing org-social posts.
 
 use std::fmt::Display;
+use std::fs::OpenOptions;
+use std::io::Write;
 
 use chrono::{DateTime, FixedOffset};
 
@@ -312,6 +314,15 @@ impl Post {
         }
     }
 
+    pub fn summary(&self, len: usize) -> String {
+        let mut summary = self.content.clone();
+        if summary.len() > len {
+            summary.truncate(len);
+            summary.push_str("...");
+        }
+        summary
+    }
+
     pub fn format_for_display(&self, profile: Option<&Profile>) -> String {
         let mut output = String::new();
 
@@ -476,6 +487,20 @@ impl Post {
         lines.push(self.content.clone());
 
         lines.join("\n")
+    }
+
+    /// Save the post to the specified file in org-social format.
+    pub fn save_post(&self, target_file: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let post_text = self.to_org_social();
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(target_file)?;
+            
+        writeln!(file, "{post_text}")?;
+
+        Ok(format!("New post saved to {}: {}", target_file, self.summary(50)))
     }
 }
 

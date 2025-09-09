@@ -3,6 +3,26 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+  - **Removed** the `reply` module and all associated structs and enums
+  - **New Post Module**: Removed the "editor" functionality completely - clients should implement their own
+    - Removed `NewPostField` enum and all its variants
+    - Removed `NewPostManager` struct and its methods
+    - Removed functions dealing with modifying the content
+    - Removed fields related to cursor position
+
+### Changed
+  - **Moved** the post's file saving logic to the Post struct
+  - **New Post to Post**: `NewPostManager::create_new_post()` is now `NewPostManager::create_post()`
+    - Takes in the client name to set on the post
+    - Returns a `Post` now
+  
+### Added
+  - **New Post Expansion**: It now has helpers and fields to also be a reply or a vote
+  - `Post` has a helper function to summarize it's content as first n chars - due to lack of title structure
+
 ## [0.3.1] - 3-09-2025
 ### Fixed
 - **Bug Fix**: Corrected `update_poll_node` method signature
