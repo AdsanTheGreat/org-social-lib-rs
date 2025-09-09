@@ -18,6 +18,10 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
   - **New Post to Post**: `NewPostManager::create_new_post()` is now `NewPostManager::create_post()`
     - Takes in the client name to set on the post
     - Returns a `Post` now
+  - **Automatic post tokenization**: Automatic post content parsing is now locked behind a non-default feature flag
+    - New `autotokenize` feature flag to call content parsing upon post creation and content modification
+    - If the feature is disabled, content modification will clear tokens and blocks - to not have them be outdated
+    - Manual parsing will have to be called explicitly if the feature is disabled
   
 ### Added
   - **New Post Expansion**: It now has helpers and fields to also be a reply or a vote

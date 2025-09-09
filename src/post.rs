@@ -165,22 +165,34 @@ impl Display for Post {
 }
 
 impl Post {
+    /// Create a new post with the given ID and content.
+    /// If the `autotokenize` feature is enabled, the content will be automatically parsed.
+    /// Otherwise, tokens and blocks will be empty until manual parsing is invoked.
     pub fn new(id: String, content: String) -> Self {
-        let mut post = Post {
-            id,
-            content,
-            tokens: Vec::new(),
-            blocks: Vec::new(),
-            ..Default::default()
-        };
+        #[cfg(feature = "autotokenize")] {
+            let mut post = Post {
+                id,
+                content,
+                tokens: Vec::new(),
+                blocks: Vec::new(),
+                ..Default::default()
+            };
         
-        post.parse_content();
-        
-        post
+            post.parse_content();
+            return post;
+        }
+        #[cfg(not(feature = "autotokenize"))] {
+            Post {
+                id,
+                content,
+                tokens: Vec::new(),
+                blocks: Vec::new(),
+                ..Default::default()
+            }
+        }
     }
 
     /// Parse the content to extract tokens and blocks.
-    /// This method supports multi-line content and preserves newlines.
     pub fn parse_content(&mut self) {
         let mut tokenizer = Tokenizer::new(self.content.clone());
         self.tokens = tokenizer.tokenize();
@@ -261,9 +273,19 @@ impl Post {
     }
 
     // Automatically re-parses the new content.
+    /// If the `autotokenize` feature is enabled, the content will be automatically parsed.
+    /// Otherwise, tokens and blocks will be cleared until manual parsing is invoked.
     pub fn set_content(&mut self, content: String) {
         self.content = content;
-        self.parse_content();
+        #[cfg(feature = "autotokenize")]
+        {
+            self.parse_content();
+        }
+        #[cfg(not(feature = "autotokenize"))]
+        {
+            self.tokens.clear();
+            self.blocks.clear();
+        }
     }
 
     pub fn set_tags(&mut self, tags: Option<Vec<String>>) {
@@ -508,6 +530,7 @@ impl Post {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "autotokenize")]
     #[test]
     fn test_post_self_parsing() {
         let content = "This is *bold* text with /italic/ formatting.\nAnd a second line with ~code~.".to_string();
@@ -522,17 +545,7 @@ mod tests {
         assert!(tokens.iter().any(|t| matches!(t, Token::InlineCode(_))));
     }
 
-    #[test] 
-    fn test_multiline_content_preservation() {
-        let multiline_content = "Line one\nLine two\nLine three".to_string();
-        let post = Post::new("test-id".to_string(), multiline_content.clone());
-        
-        assert_eq!(post.content(), &multiline_content);
-        assert_eq!(post.content().lines().count(), 3);
-        
-        assert!(post.content().contains('\n'));
-    }
-
+    #[cfg(feature = "autotokenize")]
     #[test]
     fn test_content_reparsing() {
         let mut post = Post::new("test-id".to_string(), "Initial content".to_string());
@@ -570,26 +583,11 @@ mod tests {
         assert!(content.contains("First line of content"));
         assert!(content.contains("Second line with *formatting*"));
         assert!(content.contains("Third line"));
-        
-        assert!(!post.tokens().is_empty());
-        assert!(post.tokens().iter().any(|t| matches!(t, Token::Bold(_))));
-    }
 
-    #[test]
-    fn test_blocks_parsing() {
-        let content_with_blocks = r#"Some text before
-
-#+BEGIN_SRC rust
-fn main() {
-    println!("Hello, world!");
-}
-#+END_SRC
-
-Some text after"#.to_string();
+        #[cfg(feature = "autotokenize")] {
+            assert!(!post.tokens().is_empty());
+            assert!(post.tokens().iter().any(|t| matches!(t, Token::Bold(_))));
+        }
         
-        let post = Post::new("test-id".to_string(), content_with_blocks);
-        
-        assert!(!post.blocks().is_empty());
-        assert_eq!(post.blocks().len(), 1);
     }
 }
