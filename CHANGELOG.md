@@ -3,6 +3,36 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 9-09-2025
+
+### Removed
+- **Removed** the `reply` module and all associated structs and enums
+- **New Post Module**: Removed the "editor" functionality completely - clients should implement their own
+  - Removed `NewPostField` enum and all its variants
+  - Removed `NewPostManager` struct and its methods
+  - Removed functions dealing with modifying the content
+  - Removed fields related to cursor position
+
+### Changed
+- **Moved** the post's file saving logic to the Post struct
+- **Thread view**: now sorts by latest activity time in a thread, not the root post time
+- **New Post to Post**: `NewPostManager::create_new_post()` is now `NewPostManager::create_post()`
+  - Takes in the client name to set on the post
+  - Returns a `Post` now
+- **Automatic post tokenization**: Automatic post content parsing is now locked behind a non-default feature flag
+  - New `autotokenize` feature flag to call content parsing upon post creation and content modification
+  - If the feature is disabled, content modification will clear tokens and blocks - to not have them be outdated
+  - Manual parsing will have to be called explicitly if the feature is disabled
+  
+### Added
+- **Post types: ** Added `PostType` enum to classify posts into types
+  - Regular, Reply, Reaction, Poll, PollVote, SimplePollVote
+  - `Post::post_type()` method to get the type of a post
+- **Thread view**: now has a method to insert a post into the tree after the fact
+  - Expensive operation for replies, as the tree has to be searched recursively for the parent post
+- **New Post Expansion**: It now has helpers and fields to also be a reply or a vote
+- `Post` has a helper function to summarize it's content as first n chars - due to lack of title structure
+
 ## [0.3.1] - 3-09-2025
 ### Fixed
 - **Bug Fix**: Corrected `update_poll_node` method signature

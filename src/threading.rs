@@ -4,6 +4,7 @@
 //! based on reply relationships, creating hierarchical tree structures for display.
 
 use crate::{poll::Poll, post::Post};
+use chrono::{DateTime, FixedOffset};
 use std::collections::HashMap;
 
 /// Represents a node in a threaded conversation tree.
@@ -15,6 +16,8 @@ pub struct ThreadNode {
     pub replies: Vec<ThreadNode>,
     /// Depth level in the conversation (0 = root)
     pub depth: usize,
+    /// Latest activity time in this node's subtree (including this post and all replies)
+    pub latest_activity_time: Option<DateTime<FixedOffset>>,
 }
 
 /// Represents a collection of threaded conversations.
@@ -29,10 +32,12 @@ pub struct ThreadView {
 
 impl ThreadNode {
     pub fn new(post: Post, depth: usize) -> Self {
+        let latest_activity_time = post.time();
         Self {
             post,
             replies: Vec::new(),
             depth,
+            latest_activity_time,
         }
     }
 
@@ -40,9 +45,38 @@ impl ThreadNode {
         self.replies.push(reply_node);
     }
 
+    /// Calculate and update the latest activity time for this node and all its descendants.
+    /// This should be called after the tree structure is complete.
+    pub fn update_latest_activity_time(&mut self) {
+        // Everybody loves recursion, right?
+        for reply in &mut self.replies {
+            reply.update_latest_activity_time();
+        }
+        
+        // Start with this post's own time
+        let mut latest_time = self.post.time();
+        
+        // Check all replies for later times
+        for reply in &self.replies {
+            match (latest_time, reply.latest_activity_time) {
+                (Some(current), Some(reply_time)) => {
+                    if reply_time > current {
+                        latest_time = Some(reply_time);
+                    }
+                }
+                (None, Some(reply_time)) => {
+                    latest_time = Some(reply_time);
+                }
+                _ => {} // Keep current latest_time
+            }
+        }
+        
+        self.latest_activity_time = latest_time;
+    }
+
     pub fn sort_replies(&mut self) {
         self.replies.sort_by(|a, b| {
-            match (a.post.time(), b.post.time()) {
+            match (a.latest_activity_time, b.latest_activity_time) {
                 (Some(time_a), Some(time_b)) => time_a.cmp(&time_b), // Chronological order
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
@@ -243,10 +277,15 @@ impl ThreadView {
 
     /// Sort all threads and their replies chronologically.
     pub fn sort_threads(&mut self) {
-        // Sort root posts (newest first)
+        // First, update latest activity times for all threads
+        for root in &mut self.roots {
+            root.update_latest_activity_time();
+        }
+        
+        // Sort root posts (latest activity first)
         self.roots.sort_by(|a, b| {
-            match (a.post.time(), b.post.time()) {
-                (Some(time_a), Some(time_b)) => time_b.cmp(&time_a), // Reverse for newest first
+            match (a.latest_activity_time, b.latest_activity_time) {
+                (Some(time_a), Some(time_b)) => time_b.cmp(&time_a), // Reverse for latest activity first
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
                 (None, None) => std::cmp::Ordering::Equal,
@@ -284,6 +323,92 @@ impl ThreadView {
         for reply in &post_node.replies {
             poll.add_vote_from_reply(&reply.post);
         }
+    }
+
+    /// Add a new post to the thread tree.
+    /// 
+    /// If the post is a reply, it will be added to the appropriate parent node.
+    /// If the parent doesn't exist, a placeholder will be created.
+    /// If it's not a reply, it will be added as a new root thread.
+    /// 
+    /// After adding the post, latest activity times will be updated and threads will be re-sorted.
+    ///
+    /// # Arguments
+    /// * `post` - The new post to add to the thread tree
+    pub fn add_post(&mut self, post: Post) {
+        if let Some(reply_to) = post.reply_to() {
+            let reply_target = Self::resolve_reply_target(reply_to, &self.id_map);
+            
+            // Try to find the parent in existing threads
+            if self.find_and_add_reply(&reply_target, post.clone()).is_some() {
+                self.id_map.insert(post.id().to_string(), post.full_id());
+                
+                self.sort_threads();
+            } else {
+                // Parent not found - create placeholder and add as new root thread
+                let placeholder_post = Self::create_placeholder_post(&reply_target);
+                let mut placeholder_node = ThreadNode::new(placeholder_post, 0);
+                
+                let reply_node = ThreadNode::new(post.clone(), 1);
+                placeholder_node.add_reply(reply_node);
+                
+                placeholder_node.update_latest_activity_time();
+                
+                self.roots.push(placeholder_node);
+                
+                self.id_map.insert(post.id().to_string(), post.full_id());
+                
+                // Resort threads
+                self.sort_threads();
+            }
+        } else {
+            // This is a root post
+            let new_root = ThreadNode::new(post.clone(), 0);
+            self.roots.push(new_root);
+            
+            self.id_map.insert(post.id().to_string(), post.full_id());
+            
+            // Resort threads
+            self.sort_threads();
+        }
+    }
+
+    /// Recursively search for a target post ID and add a reply to it.
+    /// Returns Some(depth) if the reply was successfully added, None if target not found.
+    fn find_and_add_reply(&mut self, target_id: &str, reply_post: Post) -> Option<usize> {
+        for root in &mut self.roots {
+            if let Some(depth) = Self::find_and_add_reply_to_node(root, target_id, reply_post.clone()) {
+                return Some(depth);
+            }
+        }
+        None
+    }
+
+    /// Recursively search within a specific node and its descendants for the target ID.
+    /// Returns Some(depth) if the reply was successfully added, None if target not found.
+    fn find_and_add_reply_to_node(node: &mut ThreadNode, target_id: &str, reply_post: Post) -> Option<usize> {
+        // Check if this node is the target
+        if node.post.full_id() == target_id {
+            let reply_depth = node.depth + 1;
+            let reply_node = ThreadNode::new(reply_post, reply_depth);
+            node.add_reply(reply_node);
+            
+            // Update latest activity time for this node and propagate upwards
+            node.update_latest_activity_time();
+            
+            return Some(reply_depth);
+        }
+        
+        // Search in replies
+        for reply in &mut node.replies {
+            if let Some(depth) = Self::find_and_add_reply_to_node(reply, target_id, reply_post.clone()) {
+                // Update our latest activity time
+                node.update_latest_activity_time();
+                return Some(depth);
+            }
+        }
+        
+        None
     }
 }
 

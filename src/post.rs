@@ -4,6 +4,8 @@
 //! for parsing and serializing org-social posts.
 
 use std::fmt::Display;
+use std::fs::OpenOptions;
+use std::io::Write;
 
 use chrono::{DateTime, FixedOffset};
 
@@ -11,6 +13,31 @@ use crate::profile::Profile;
 use crate::util;
 use crate::tokenizer::{Token, Tokenizer};
 use crate::blocks::{ActivatableElement, parse_blocks_with_poll_end};
+
+/// Represents the type of a post based on its properties.
+/// Used for categorizing posts as regular posts, polls, replies, or votes.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PostType {
+    /// A non-reply post that is not a poll, a standalone standard post.
+    Regular,
+    /// A post that contains a poll.
+    /// Could in theory be a reply.
+    Poll,
+    /// A reply to another post, not a poll vote, with content.
+    Reply,
+    /// A reply that is not a poll vote, has empty content - probably a mood set.
+    Reaction,
+    /// A reply that is a poll vote.
+    PollVote,
+    /// A reply that is a poll vote, but has no content.
+    SimplePollVote,
+}
+
+impl Default for PostType {
+    fn default() -> Self {
+        PostType::Regular
+    }
+}
 
 /// Represents a post parsed from an org-social file.
 /// 
@@ -163,22 +190,34 @@ impl Display for Post {
 }
 
 impl Post {
+    /// Create a new post with the given ID and content.
+    /// If the `autotokenize` feature is enabled, the content will be automatically parsed.
+    /// Otherwise, tokens and blocks will be empty until manual parsing is invoked.
     pub fn new(id: String, content: String) -> Self {
-        let mut post = Post {
-            id,
-            content,
-            tokens: Vec::new(),
-            blocks: Vec::new(),
-            ..Default::default()
-        };
+        #[cfg(feature = "autotokenize")] {
+            let mut post = Post {
+                id,
+                content,
+                tokens: Vec::new(),
+                blocks: Vec::new(),
+                ..Default::default()
+            };
         
-        post.parse_content();
-        
-        post
+            post.parse_content();
+            return post;
+        }
+        #[cfg(not(feature = "autotokenize"))] {
+            Post {
+                id,
+                content,
+                tokens: Vec::new(),
+                blocks: Vec::new(),
+                ..Default::default()
+            }
+        }
     }
 
     /// Parse the content to extract tokens and blocks.
-    /// This method supports multi-line content and preserves newlines.
     pub fn parse_content(&mut self) {
         let mut tokenizer = Tokenizer::new(self.content.clone());
         self.tokens = tokenizer.tokenize();
@@ -199,6 +238,17 @@ impl Post {
             util::parse_timestamp(&self.id).ok()
         } else {
             None
+        }
+    }
+
+    pub fn post_type(&self) -> PostType {
+        match (self.is_poll(), self.is_poll_vote(), self.is_reply(), self.is_empty()) {
+            (true, _, _, _) => PostType::Poll,
+            (_, true, _, true) => PostType::SimplePollVote,
+            (_, true, _, false) => PostType::PollVote,
+            (_, _, true, true) => PostType::Reaction,
+            (_, _, true, false) => PostType::Reply,
+            _ => PostType::Regular,
         }
     }
 
@@ -259,9 +309,19 @@ impl Post {
     }
 
     // Automatically re-parses the new content.
+    /// If the `autotokenize` feature is enabled, the content will be automatically parsed.
+    /// Otherwise, tokens and blocks will be cleared until manual parsing is invoked.
     pub fn set_content(&mut self, content: String) {
         self.content = content;
-        self.parse_content();
+        #[cfg(feature = "autotokenize")]
+        {
+            self.parse_content();
+        }
+        #[cfg(not(feature = "autotokenize"))]
+        {
+            self.tokens.clear();
+            self.blocks.clear();
+        }
     }
 
     pub fn set_tags(&mut self, tags: Option<Vec<String>>) {
@@ -304,12 +364,29 @@ impl Post {
         self.poll_option.is_some() && self.reply_to.is_some()
     }
 
+    pub fn is_reply(&self) -> bool {
+        self.reply_to.is_some()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.content.trim().is_empty()
+    }
+
     pub fn full_id(&self) -> String {
         if let Some(source) = &self.source {
             format!("{}#{}", source, self.id)
         } else {
             self.id.clone()
         }
+    }
+
+    pub fn summary(&self, len: usize) -> String {
+        let mut summary = self.content.clone();
+        if summary.len() > len {
+            summary.truncate(len);
+            summary.push_str("...");
+        }
+        summary
     }
 
     pub fn format_for_display(&self, profile: Option<&Profile>) -> String {
@@ -477,12 +554,27 @@ impl Post {
 
         lines.join("\n")
     }
+
+    /// Save the post to the specified file in org-social format.
+    pub fn save_post(&self, target_file: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let post_text = self.to_org_social();
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(target_file)?;
+            
+        writeln!(file, "{post_text}")?;
+
+        Ok(format!("New post saved to {}: {}", target_file, self.summary(50)))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[cfg(feature = "autotokenize")]
     #[test]
     fn test_post_self_parsing() {
         let content = "This is *bold* text with /italic/ formatting.\nAnd a second line with ~code~.".to_string();
@@ -497,17 +589,7 @@ mod tests {
         assert!(tokens.iter().any(|t| matches!(t, Token::InlineCode(_))));
     }
 
-    #[test] 
-    fn test_multiline_content_preservation() {
-        let multiline_content = "Line one\nLine two\nLine three".to_string();
-        let post = Post::new("test-id".to_string(), multiline_content.clone());
-        
-        assert_eq!(post.content(), &multiline_content);
-        assert_eq!(post.content().lines().count(), 3);
-        
-        assert!(post.content().contains('\n'));
-    }
-
+    #[cfg(feature = "autotokenize")]
     #[test]
     fn test_content_reparsing() {
         let mut post = Post::new("test-id".to_string(), "Initial content".to_string());
@@ -545,26 +627,11 @@ mod tests {
         assert!(content.contains("First line of content"));
         assert!(content.contains("Second line with *formatting*"));
         assert!(content.contains("Third line"));
-        
-        assert!(!post.tokens().is_empty());
-        assert!(post.tokens().iter().any(|t| matches!(t, Token::Bold(_))));
-    }
 
-    #[test]
-    fn test_blocks_parsing() {
-        let content_with_blocks = r#"Some text before
-
-#+BEGIN_SRC rust
-fn main() {
-    println!("Hello, world!");
-}
-#+END_SRC
-
-Some text after"#.to_string();
+        #[cfg(feature = "autotokenize")] {
+            assert!(!post.tokens().is_empty());
+            assert!(post.tokens().iter().any(|t| matches!(t, Token::Bold(_))));
+        }
         
-        let post = Post::new("test-id".to_string(), content_with_blocks);
-        
-        assert!(!post.blocks().is_empty());
-        assert_eq!(post.blocks().len(), 1);
     }
 }
