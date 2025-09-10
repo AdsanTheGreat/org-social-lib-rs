@@ -750,7 +750,7 @@ dependencies = [
 
 [[package]]
 name = "org-social-lib-rs"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "chrono",
  "reqwest",

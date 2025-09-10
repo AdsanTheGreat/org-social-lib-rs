@@ -3,6 +3,10 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 10-09-2025
+### Fixed
+- **Post summary**: Fixed the `Post::summary` function panicking when the split is in the middle of a multi-byte character (e.g. emoji)
+
 ## [0.4.2] - 9-09-2025
 ### Changed
 - **Post parsing**: Empty properties in posts are treated as None, not Some("")

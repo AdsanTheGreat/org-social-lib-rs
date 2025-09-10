@@ -417,13 +417,16 @@ impl Post {
         }
     }
 
+    /// Truncates the content to the specified length, adding "..." if truncated.
     pub fn summary(&self, len: usize) -> String {
-        let mut summary = self.content.clone();
-        if summary.len() > len {
-            summary.truncate(len);
+        let chars: Vec<char> = self.content.chars().collect();
+        if chars.len() > len {
+            let mut summary: String = chars[..len].iter().collect();
             summary.push_str("...");
+            summary
+        } else {
+            self.content.clone()
         }
-        summary
     }
 
     pub fn format_for_display(&self, profile: Option<&Profile>) -> String {
@@ -609,6 +612,19 @@ impl Post {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_summary_handles_emojis() {
+        let content = "Hello 👋 world 🌍!".to_string();
+        let post = Post::new("emoji-id".to_string(), content.clone());
+
+        // Truncate to 7 chars ("Hello 👋")
+        let summary = post.summary(7);
+        assert_eq!(summary, "Hello 👋...");
+
+        // Truncate to full length (should not add ...)
+        let summary_full = post.summary(content.chars().count());
+        assert_eq!(summary_full, content);
+    }
     use super::*;
 
     #[cfg(feature = "autotokenize")]
