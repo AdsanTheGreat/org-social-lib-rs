@@ -16,7 +16,7 @@ use crate::blocks::{ActivatableElement, parse_blocks_with_poll_end};
 
 /// Represents the type of a post based on its properties.
 /// Used for categorizing posts as regular posts, polls, replies, or votes.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug)]
 pub enum PostType {
     /// A non-reply post that is not a poll, a standalone standard post.
     Regular,
@@ -223,6 +223,21 @@ impl Display for Post {
             "Post:\nID: {}\nLang: {:?}\nTags: {:?}\nClient: {:?}\nReply To: {:?}\nPoll End: {:?}\nPoll Option: {:?}\nMood: {:?}\nSource: {:?}\nAuthor: {:?}\nTokens: {} parsed\nBlocks: {} parsed\nContent:\n{}",
             self.id, self.lang, self.tags, self.client, self.reply_to, self.poll_end, self.poll_option, self.mood, self.source, self.author, self.tokens.len(), self.blocks.len(), self.content
         )
+    }
+}
+
+impl std::cmp::PartialEq for Post {
+    /// Posts are considered equal when they have the same id
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl std::cmp::Eq for Post {}
+
+impl std::hash::Hash for Post {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
     }
 }
 

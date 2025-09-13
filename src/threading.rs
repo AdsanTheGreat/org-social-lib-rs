@@ -3,7 +3,7 @@
 //! This module provides functionality to organize posts into threaded conversations
 //! based on reply relationships, creating hierarchical tree structures for display.
 
-use crate::{poll::Poll, post::Post};
+use crate::{feed::Feed, poll::Poll, post::Post};
 use chrono::{DateTime, FixedOffset};
 use std::collections::HashMap;
 
@@ -21,7 +21,9 @@ pub struct ThreadNode {
 }
 
 /// Represents a collection of threaded conversations.
-pub struct ThreadView {
+pub struct ThreadView<'a> {
+    /// Reference to the base feed
+    pub feed: &'a Feed,
     /// Root posts (posts that are not replies to anything)
     pub roots: Vec<ThreadNode>,
     /// Map of post IDs to their full identifiers for quick lookup
@@ -103,40 +105,30 @@ impl ThreadNode {
     }
 }
 
-impl ThreadView {
-    pub fn new() -> Self {
+impl<'a> ThreadView<'a> {
+    pub fn new(feed: &'a Feed) -> Self {
         Self {
+            feed,
             roots: Vec::new(),
             id_map: HashMap::new(),
             placeholder_map: HashMap::new(),
         }
     }
 
-    /// Create a threaded view from a collection of posts.
-    ///
-    /// This method organizes posts into conversation threads based on their
-    /// reply_to relationships, creating a hierarchical tree structure.
-    /// For replies to missing posts, it first attempts to find a post by 
-    /// timestamp-only matching before creating placeholder "unknown" posts.
-    ///
-    /// # Arguments
-    /// * `posts` - Vector of posts to organize into threads
-    ///
-    /// # Returns
-    /// A ThreadView containing the organized conversation trees.
-    pub fn from_posts(posts: Vec<Post>) -> Self {
-        let mut thread_view = Self::new();
+    /// Create a threaded view from a Feed.
+    pub fn from_feed(feed: &'a Feed) -> Self {
+        let mut thread_view = Self::new(feed);
         let mut post_map: HashMap<String, ThreadNode> = HashMap::new();
         let mut reply_map: HashMap<String, Vec<ThreadNode>> = HashMap::new();
 
         // Build ID mapping for quick lookups
-        for post in &posts {
-            let full_id = post.full_id();
+        for post in &feed.posts {
+            let full_id: String = post.full_id();
             thread_view.id_map.insert(post.id().to_string(), full_id);
         }
 
         // First pass: create nodes for all posts
-        for post in posts {
+        for post in &feed.posts {
             let node = ThreadNode::new(post.clone(), 0);
             let full_id = post.full_id();
             post_map.insert(full_id, node);
@@ -412,13 +404,19 @@ impl ThreadView {
     }
 }
 
-impl Default for ThreadView {
-    fn default() -> Self {
-        Self::new()
+impl<'a> From<&'a Feed> for ThreadView<'a> {
+    fn from(feed: &'a Feed) -> Self {
+        ThreadView::from_feed(feed)
     }
 }
 
-impl std::fmt::Display for ThreadView {
+impl<'a> Default for ThreadView<'a> {
+    fn default() -> Self {
+        panic!("ThreadView::default() is not supported, use ThreadView::new(feed)");
+    }
+}
+
+impl<'a> std::fmt::Display for ThreadView<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Thread View with {} conversations:", self.thread_count())?;
         
@@ -431,7 +429,7 @@ impl std::fmt::Display for ThreadView {
     }
 }
 
-impl ThreadView {
+impl<'a> ThreadView<'a> {
     /// Helper method to display a thread node with proper indentation.
     fn display_node(f: &mut std::fmt::Formatter<'_>, node: &ThreadNode, prefix: &str) -> std::fmt::Result {
         // Display the post with indentation
@@ -472,7 +470,8 @@ mod tests {
         let posts = vec![reply_post.clone()];
         
         // Create thread view
-        let thread_view = ThreadView::from_posts(posts);
+        let feed = crate::feed::Feed { posts: posts.clone(), profiles: vec![], profile_map: std::collections::HashMap::new() };
+        let thread_view = ThreadView::from_feed(&feed);
         
         // Should have one root thread (the placeholder)
         assert_eq!(thread_view.thread_count(), 1);
@@ -505,7 +504,8 @@ mod tests {
         let posts = vec![reply1, reply2];
         
         // Create thread view
-        let thread_view = ThreadView::from_posts(posts);
+        let feed = crate::feed::Feed { posts: posts.clone(), profiles: vec![], profile_map: std::collections::HashMap::new() };
+        let thread_view = ThreadView::from_feed(&feed);
         
         // Should have one root thread (the placeholder)
         assert_eq!(thread_view.thread_count(), 1);
@@ -534,7 +534,8 @@ mod tests {
         let posts = vec![original_post.clone(), reply_post.clone()];
         
         // Create thread view
-        let thread_view = ThreadView::from_posts(posts);
+        let feed = crate::feed::Feed { posts: posts.clone(), profiles: vec![], profile_map: std::collections::HashMap::new() };
+        let thread_view = ThreadView::from_feed(&feed);
         
         // Should have one root thread (the original post)
         assert_eq!(thread_view.thread_count(), 1);
@@ -564,7 +565,8 @@ mod tests {
         let posts = vec![reply_post.clone()];
         
         // Create thread view
-        let thread_view = ThreadView::from_posts(posts);
+        let feed = crate::feed::Feed { posts: posts.clone(), profiles: vec![], profile_map: std::collections::HashMap::new() };
+        let thread_view = ThreadView::from_feed(&feed);
         
         // Should have one root thread (the placeholder)
         assert_eq!(thread_view.thread_count(), 1);

@@ -8,8 +8,7 @@ use std::collections::HashMap;
 /// Represents a user profile parsed from an org-social file.
 /// 
 /// Contains metadata about the user.
-#[derive(Clone)]
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Profile {
     title: String,
     nick: String,
@@ -174,6 +173,23 @@ impl std::fmt::Display for Profile {
     }
 }
 
+impl PartialEq for Profile {
+    /// Profiles are considered equal when they have the same title and nick
+    fn eq(&self, other: &Self) -> bool {
+        self.title == other.title &&
+        self.nick == other.nick
+    }
+}
+
+impl Eq for Profile {}
+
+impl core::hash::Hash for Profile {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.title.hash(state);
+        self.nick.hash(state);
+    }
+}
+
 impl Profile {
     pub fn follow(&self) -> &Option<Vec<(String, String)>> {
         &self.follow
@@ -253,6 +269,15 @@ impl Profile {
         }
 
         lines.join("\n")
+    }
+
+    pub fn add_follow(&mut self, nick: String, url: String) {
+        if self.follow.is_none() {
+            self.follow = Some(Vec::new());
+        }
+        if let Some(follow) = &mut self.follow {
+            follow.push((nick, url));
+        }
     }
 
     pub fn create_follow_map(&self) -> HashMap<String, String> {

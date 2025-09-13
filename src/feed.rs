@@ -4,6 +4,9 @@
 //! feeds of org-social posts from multiple sources.
 //! The feed represantation is by default sorted chronologically with newest posts first.
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use crate::profile::Profile;
 use crate::post::Post;
 use crate::network;
@@ -11,44 +14,68 @@ use chrono::{DateTime, FixedOffset};
 
 /// Represents a collection of org-social posts from various sources.
 ///
-/// A feed can contain posts from the user and followed users,
-/// sorted chronologically with metadata preserved.
+/// A feed contains posts, associated profiles, and a mapping from post ids to their author's profiles.
 pub struct Feed {
     pub posts: Vec<Post>,
+    pub profiles: Vec<Arc<Profile>>,
+    pub profile_map: HashMap<String, Arc<Profile>>, // Maps post ID to profile
 }
 
 impl Feed {
-    pub async fn create_combined_feed(
-        user_profile: &Profile,
-        user_posts: Vec<Post>,
-    ) -> Result<Feed, Box<dyn std::error::Error>> {
+    pub async fn new(user_profile: &Profile, user_posts: Vec<Post>) -> Result<Feed, Box<dyn std::error::Error>>{
         let mut all_posts = Vec::new();
+        let mut profiles: Vec<Arc<Profile>> = Vec::new();
 
-        // Add user's own posts with their nick as author
+        // Add user profile to profiles
+        let user_profile_arc = Arc::new(user_profile.clone());
+        profiles.push(user_profile_arc.clone());
+
+        // Fetch posts from followed users and collect profiles
+        let followed_feeds = network::get_feeds_from_profile_with_timeout(user_profile).await;
+        for (profile, _, _) in &followed_feeds {
+            profiles.push(Arc::new(profile.clone()));
+        }
+
+        // Build post list
         for mut post in user_posts {
             post.set_author(user_profile.nick().to_string());
             all_posts.push(post);
         }
-        
-        // Fetch posts from followed users
-        let followed_feeds = network::get_feeds_from_profile_with_timeout(user_profile).await;
-        
-        // Add posts from followed users with their nick as author
-        for (profile, posts, _source) in followed_feeds {
+        for (profile, posts, source) in followed_feeds {
             let author_nick = if profile.nick().is_empty() {
-                "unknown".to_string() // Fallback if no nick is set
+                "unknown".to_string()
             } else {
                 profile.nick().to_string()
             };
-            
             for mut post in posts {
                 post.set_author(author_nick.clone());
+                post.set_source(Some(source.clone()));
                 all_posts.push(post);
             }
         }
-        
+
+        // Build post->profile map using Arc<Profile>
+        let mut profile_map: HashMap<String, Arc<Profile>> = HashMap::new();
+        for post in &all_posts {
+            let profile_arc = profiles.iter()
+                .find(|p| post.author().as_deref() == Some(p.nick()))
+                .cloned()
+                .unwrap_or(user_profile_arc.clone());
+            profile_map.insert(post.id().to_string(), profile_arc);
+        }
+
+        Ok(Feed { posts: all_posts, profiles, profile_map })
+    }
+
+    /// Creates a feed with the posts sorted chronologically, newest first.
+    pub async fn create_combined_feed(
+        user_profile: &Profile,
+        user_posts: Vec<Post>,
+    ) -> Result<Feed, Box<dyn std::error::Error>> {
+        let mut feed = Self::new(user_profile, user_posts).await?;
+
         // Sort posts chronologically (newest first)
-        all_posts.sort_by(|a, b| {
+        feed.posts.sort_by(|a, b| {
             match (a.time(), b.time()) {
                 (Some(time_a), Some(time_b)) => time_b.cmp(&time_a), // Reverse order for newest first
                 (Some(_), None) => std::cmp::Ordering::Less,         // Posts with time come before posts without
@@ -56,19 +83,22 @@ impl Feed {
                 (None, None) => std::cmp::Ordering::Equal,           // Equal if both don't have time
             }
         });
-        
-        Ok(Feed { posts: all_posts })
+
+        Ok(feed)
     }
     
     pub fn create_user_feed(user_profile: &Profile, user_posts: Vec<Post>) -> Feed {
         let mut posts = Vec::new();
-        
+        let mut profiles: Vec<Arc<Profile>> = Vec::new();
+        let user_profile_arc = Arc::new(user_profile.clone());
+        profiles.push(user_profile_arc.clone());
+
         // Set author for user's own posts
         for mut post in user_posts {
             post.set_author(user_profile.nick().to_string());
             posts.push(post);
         }
-        
+
         // Sort posts chronologically (newest first)
         posts.sort_by(|a, b| {
             match (a.time(), b.time()) {
@@ -78,10 +108,19 @@ impl Feed {
                 (None, None) => std::cmp::Ordering::Equal,
             }
         });
-        
-        Feed { posts }
+
+        // Build post->profile map using Arc<Profile>
+        let mut profile_map: HashMap<String, Arc<Profile>> = HashMap::new();
+        for post in &posts {
+            let profile_arc = profiles.iter()
+                .find(|p| post.author().as_deref() == Some(p.nick()))
+                .cloned()
+                .unwrap_or(user_profile_arc.clone());
+            profile_map.insert(post.id().to_string(), profile_arc);
+        }
+
+        Feed { posts, profiles, profile_map }
     }
-    
     /// Filter posts by a specific time range.
     ///
     /// Returns posts that fall within the specified start and end times.
@@ -145,6 +184,10 @@ impl Feed {
 
     pub fn is_empty(&self) -> bool {
         self.posts.is_empty()
+    }
+
+    pub fn profile_for_post(&self, post: &Post) -> Option<&Arc<Profile>> {
+        self.profile_map.get(post.id())
     }
 
 }

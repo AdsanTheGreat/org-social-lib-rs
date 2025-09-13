@@ -3,6 +3,18 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Changed
+- **Feed/Notifications/Threading refactor:**
+  - Feed now holds all posts, profiles, and a post-to-profile map using `Arc<Profile>` for safe shared ownership
+  - NotificationFeed and ThreadView now hold references to their base Feed and use it for all post/profile lookups and construction
+  - Added `Feed::profile_from_post` for mapping from a post reference to its profile
+  - Notification and threading logic now operate on posts from Feed, not raw vectors. They also hold refs to the feeds used in creation
+
+### Technical Details
+- Post now implements Eq, PartialEq and Hash - only the id is considered for those traits
+- Profile now implements Eq, PartialEq and Hash - only the title & nick are considered for those traits
+
 ## [0.4.3] - 10-09-2025
 ### Fixed
 - **Post summary**: Fixed the `Post::summary` function panicking when the split is in the middle of a multi-byte character (e.g. emoji)
