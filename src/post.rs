@@ -56,6 +56,7 @@ pub struct Post {
     mood: Option<String>,
     pub(crate) content: String,
     source: Option<String>,
+    group: Option<(String, String)>,
     author: Option<String>,
     tokens: Vec<Token>,
     blocks: Vec<ActivatableElement>,
@@ -75,6 +76,7 @@ impl From<&Post> for Post {
             mood: post.mood.clone(),
             content: post.content.clone(),
             source: post.source.clone(),
+            group: post.group.clone(),
             author: post.author.clone(),
             tokens: post.tokens.clone(),
             blocks: post.blocks.clone(),
@@ -96,6 +98,7 @@ impl From<Vec<String>> for Post {
         let mut poll_option: Option<String> = None;
         let mut mood: Option<String> = None;
         let mut content = String::new();
+        let mut group: Option<(String, String)> = None;
 
         let mut in_properties = false;
         let mut properties_ended = false;
@@ -138,6 +141,12 @@ impl From<Vec<String>> for Post {
                         ":POLL_END" => poll_end = Some(parts[1].trim().to_string()),
                         ":POLL_OPTION" => poll_option = Some(parts[1].trim().to_string()),
                         ":MOOD" => mood = Some(parts[1].trim().to_string()),
+                        ":GROUP" => {
+                            let group_parts: Vec<&str> = parts[1].splitn(2, ' ').collect();
+                            if group_parts.len() == 2 {
+                                group = Some((group_parts[0].to_string(), group_parts[1].to_string()));
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -205,6 +214,7 @@ impl From<Vec<String>> for Post {
             mood,
             content,
             source: None,
+            group,
             author: None,
             tokens: Vec::new(),
             blocks: Vec::new(),
@@ -220,8 +230,8 @@ impl Display for Post {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Post:\nID: {}\nLang: {:?}\nTags: {:?}\nClient: {:?}\nReply To: {:?}\nPoll End: {:?}\nPoll Option: {:?}\nMood: {:?}\nSource: {:?}\nAuthor: {:?}\nTokens: {} parsed\nBlocks: {} parsed\nContent:\n{}",
-            self.id, self.lang, self.tags, self.client, self.reply_to, self.poll_end, self.poll_option, self.mood, self.source, self.author, self.tokens.len(), self.blocks.len(), self.content
+            "Post:\nID: {}\nLang: {:?}\nTags: {:?}\nClient: {:?}\nReply To: {:?}\nPoll End: {:?}\nPoll Option: {:?}\nMood: {:?}\nSource: {:?}\nGroup: {:?}\nAuthor: {:?}\nTokens: {} parsed\nBlocks: {} parsed\nContent:\n{}",
+            self.id, self.lang, self.tags, self.client, self.reply_to, self.poll_end, self.poll_option, self.mood, self.source, self.group, self.author, self.tokens.len(), self.blocks.len(), self.content
         )
     }
 }
@@ -346,6 +356,10 @@ impl Post {
 
     pub fn author(&self) -> &Option<String> {
         &self.author
+    }
+
+    pub fn group(&self) -> &Option<(String, String)> {
+        &self.group
     }
 
     pub fn set_author(&mut self, author: String) {
@@ -480,6 +494,10 @@ impl Post {
             metadata.push(format!("Client: {}", client));
         }
 
+        if let Some(group) = self.group() {
+            metadata.push(format!("Group: {} - {}", group.0, group.1));
+        }
+
         if let Some(reply_to) = self.reply_to() {
             // Extract the post ID from the reply_to URL 
             let reply_id = if let Some(hash_pos) = reply_to.rfind('#') {
@@ -582,6 +600,10 @@ impl Post {
 
         if let Some(client) = &self.client {
             lines.push(format!(":CLIENT: {client}"));
+        }
+
+        if let Some(group) = &self.group {
+            lines.push(format!(":GROUP: {} {}", group.0, group.1));
         }
 
         if let Some(reply_to) = &self.reply_to {

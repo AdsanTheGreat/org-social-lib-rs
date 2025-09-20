@@ -2,7 +2,7 @@
 
 A Rust library for parsing and interacting with [Org-social](https://github.com/tanrax/org-social) decentralized social networks.
 
-Current version is targeting 1.2 release.
+Current version is targeting 1.3 release.
 
 ## Overview
 

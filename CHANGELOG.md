@@ -4,6 +4,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+Update to spec 1.3
+
+### Added
+- **Group property**: Added support for the `:GROUP:` property in posts and profiles
+  - Profiles have a `Option<Vec<(String, String)>>` field representing group name and URL pairs
+  - Posts have a `Option<(String, String)>` field representing the group name and URL
+
 ### Changed
 - **Feed/Notifications/Threading refactor:**
   - Feed now holds all posts, profiles, and a post-to-profile map using `Arc<Profile>` for safe shared ownership

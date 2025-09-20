@@ -16,6 +16,7 @@ pub struct Profile {
     avatar: Option<String>,
     link: Option<Vec<String>>,
     follow: Option<Vec<(String, String)>>,
+    groups: Option<Vec<(String, String)>>,
     contact: Option<Vec<String>>,
     source: Option<String>,
 }
@@ -30,6 +31,7 @@ impl From<&Profile> for Profile {
             avatar: profile.avatar.clone(),
             link: profile.link.clone(),
             follow: profile.follow.clone(),
+            groups: profile.groups.clone(),
             contact: profile.contact.clone(),
             source: profile.source.clone(),
         }
@@ -47,6 +49,7 @@ impl From<Vec<String>> for Profile {
         let mut avatar: Option<String> = None;
         let mut link: Option<Vec<String>> = None;
         let mut follow: Option<Vec<(String, String)>> = None;
+        let mut groups: Option<Vec<(String, String)>> = None;
         let mut contact: Option<Vec<String>> = None;
 
         for line in profile_section_lines {
@@ -83,6 +86,19 @@ impl From<Vec<String>> for Profile {
                             ));
                         }
                     }
+                    "#+GROUP" => {
+                        if groups.is_none() {
+                            groups = Some(Vec::new());
+                        }
+                        // Parse "name url" format or "url"
+                        let groups_parts: Vec<&str> = parts[1].trim().splitn(2, ' ').collect();
+                        if groups_parts.len() == 2 {
+                            groups.as_mut().unwrap().push((
+                                groups_parts[0].to_string(),
+                                groups_parts[1].to_string(),
+                            ));
+                        } // No unnamed groupss
+                    }
                     "#+CONTACT" => {
                         if contact.is_none() {
                             contact = Some(Vec::new());
@@ -101,6 +117,7 @@ impl From<Vec<String>> for Profile {
             avatar,
             link,
             follow,
+            groups,
             contact,
             source: None,
         }
@@ -152,6 +169,22 @@ impl std::fmt::Display for Profile {
             }
         }
         
+        if let Some(groups) = &self.groups {
+            if !groups.is_empty() {
+                output.push(format!("groups: {} {}", 
+                    groups.len(),
+                    if groups.len() == 1 { "group" } else { "groups" }
+                ));
+                for (i, (name, url)) in groups.iter().enumerate() {
+                    output.push(format!("  {}. {} - {}", 
+                        i + 1,
+                        name, 
+                        url
+                    ));
+                }
+            }
+        }
+        
         if let Some(contacts) = &self.contact {
             if !contacts.is_empty() {
                 if contacts.len() == 1 {
@@ -193,6 +226,10 @@ impl core::hash::Hash for Profile {
 impl Profile {
     pub fn follow(&self) -> &Option<Vec<(String, String)>> {
         &self.follow
+    }
+
+    pub fn groups(&self) -> &Option<Vec<(String, String)>> {
+        &self.groups
     }
 
     pub fn title(&self) -> &str {
@@ -259,6 +296,12 @@ impl Profile {
         if let Some(follows) = &self.follow {
             for (nick, url) in follows {
                 lines.push(format!("#+FOLLOW: {nick} {url}"));
+            }
+        }
+
+        if let Some(groups) = &self.groups {
+            for (name, url) in groups {
+                lines.push(format!("#+GROUP: {name} {url}"));
             }
         }
 
