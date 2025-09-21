@@ -4,21 +4,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-Update to spec 1.3
+
+### Changed
+- **Update to spec version 1.3** - Group support, see below
+- **Feed Architecture**: Complete redesign separating data storage from presentation views
+  - Feed now serves as pure data storage managing `Vec<Arc<Post>>` instead of owned posts
+  - Introduced `FeedView` trait for different feed presentation strategies
+  - Added `SimpleFeed` as the `FeedView` implementation for chronological display - the legacy "Feed"
+  - Feed manages multiple views via `Arc<Mutex<dyn FeedView>>`, for safe updates and sharing.
+- **Post Ownership**: All post handling converted to `Arc<Post>` for shared ownership without cloning
+  - All method signatures updated to use `Arc<Post>`
 
 ### Added
 - **Group property**: Added support for the `:GROUP:` property in posts and profiles
   - Profiles have a `Option<Vec<(String, String)>>` field representing group name and URL pairs
   - Posts have a `Option<(String, String)>` field representing the group name and URL
-
-### Changed
-- **Feed/Notifications/Threading refactor:**
-  - Feed now holds all posts, profiles, and a post-to-profile map using `Arc<Profile>` for safe shared ownership
-  - NotificationFeed and ThreadView now hold references to their base Feed and use it for all post/profile lookups and construction
-  - Added `Feed::profile_from_post` for mapping from a post reference to its profile
-  - Notification and threading logic now operate on posts from Feed, not raw vectors. They also hold refs to the feeds used in creation
+- **FeedView trait**: New trait defining view interface with methods:
+  - `update_content()` - Update view with new data
+  - `len()` - Get number of posts in view
+  - `is_empty()` - Check if view is empty
+  - `view_name()` - Get display name
+  - `refresh()` - Recompute derived data - currently fairly useless, since posts are immutable
 
 ### Technical Details
+- Memory efficiency improved by eliminating post data cloning across views and modules
+- Thread safety enhanced through consistent use of `Arc<T>` for shared ownership
+- Clear separation between data storage (Feed) and presentation (FeedView implementations)
 - Post now implements Eq, PartialEq and Hash - only the id is considered for those traits
 - Profile now implements Eq, PartialEq and Hash - only the title & nick are considered for those traits
 

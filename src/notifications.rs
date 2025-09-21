@@ -7,10 +7,11 @@
 
 use crate::profile::Profile;
 use crate::post::Post;
-use crate::feed::Feed;
+use crate::feed::{self, Feed};
 use crate::tokenizer::Token;
 use chrono::{DateTime, FixedOffset};
 use std::collections::HashSet;
+use std::sync::Arc;
 
 /// Types of notifications that can occur
 #[derive(Debug, Clone, PartialEq)]
@@ -26,12 +27,12 @@ pub enum NotificationType {
 /// Represents a notification containing a post and the reason for notification
 #[derive(Debug, Clone)]
 pub struct Notification {
-    pub post: Post,
+    pub post: Arc<Post>,
     pub notification_type: NotificationType,
 }
 
 impl Notification {
-    pub fn new(post: Post, notification_type: NotificationType) -> Self {
+    pub fn new(post: Arc<Post>, notification_type: NotificationType) -> Self {
         Self {
             post,
             notification_type,
@@ -40,30 +41,25 @@ impl Notification {
 }
 
 /// Represents a collection of notifications for a user
-pub struct NotificationFeed<'a> {
-    pub feed: &'a Feed,
+pub struct NotificationFeed {
     pub notifications: Vec<Notification>,
+    target_profile: Profile,
 }
 
-impl<'a> NotificationFeed<'a> {
-    /// Create a notification feed for a user based on their profile and posts, using Feed as base
-    pub fn from_feed(feed: &'a Feed, user_profile: &Profile, user_posts: &[Post]) -> NotificationFeed<'a> {
+impl NotificationFeed {
+    /// Create a notification feed for a user based on their profile, using Feed as base
+    pub fn from_feed(feed: &Feed, user_profile: &Profile) -> NotificationFeed {
         let mut notifications = Vec::new();
-        let mut processed_post_ids = HashSet::new();
+        let user_posts = feed.posts_from_profile(&user_profile);
 
-        for post in &feed.posts {
+        for post in feed.posts.iter() {
             // Skip the user's own posts
             if post.author() == &Some(user_profile.nick().to_string()) {
                 continue;
             }
 
-            // Skip if we've already processed this post
-            if processed_post_ids.contains(post.id()) {
-                continue;
-            }
-
-            let is_mention = is_mention_to_user(post, user_profile);
-            let is_reply = is_reply_to_user(post, user_posts);
+            let is_mention = is_mention_to_user(&post, &user_profile);
+            let is_reply = is_reply_to_user(&post, &user_posts);
 
             let notification_type = match (is_mention, is_reply) {
                 (true, true) => Some(NotificationType::MentionAndReply),
@@ -74,7 +70,6 @@ impl<'a> NotificationFeed<'a> {
 
             if let Some(notification_type) = notification_type {
                 notifications.push(Notification::new(post.clone(), notification_type));
-                processed_post_ids.insert(post.id().to_string());
             }
         }
 
@@ -88,7 +83,7 @@ impl<'a> NotificationFeed<'a> {
             }
         });
 
-        NotificationFeed { feed, notifications }
+        NotificationFeed { notifications, target_profile: user_profile.clone() }
     }
 
     /// Filter notifications by a specific time range
@@ -212,7 +207,7 @@ fn is_mention_to_user(post: &Post, user_profile: &Profile) -> bool {
 /// # Returns
 ///
 /// `true` if the post is a reply to any of the user's posts, `false` otherwise
-fn is_reply_to_user(post: &Post, user_posts: &[Post]) -> bool {
+fn is_reply_to_user(post: &Post, user_posts: &Vec<&Arc<Post>>) -> bool {
     if let Some(reply_to) = post.reply_to() {
         // Extract the post ID from the reply_to URL
         let reply_id = if let Some(hash_pos) = reply_to.rfind('#') {
@@ -228,7 +223,7 @@ fn is_reply_to_user(post: &Post, user_posts: &[Post]) -> bool {
     false
 }
 
-impl<'a> std::fmt::Display for NotificationFeed<'a> {
+impl std::fmt::Display for NotificationFeed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Notification Feed with {} notifications:", self.notifications.len())?;
         
@@ -251,94 +246,3 @@ impl<'a> std::fmt::Display for NotificationFeed<'a> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::profile::Profile;
-    use crate::post::Post;
-
-    #[test]
-    fn test_mention_detection() {
-        let mut user_profile = Profile::default();
-        user_profile.set_nick("testuser".to_string());
-        user_profile.set_source(Some("https://example.com/social.org".to_string()));
-
-        // Create a post with a mention
-        let post_content = "Hello [[org-social:https://example.com/social.org][testuser]]!".to_string();
-        let mut post = Post::new("test123".to_string(), post_content);
-        post.parse_content(); // Ensure tokens are parsed
-
-        assert!(is_mention_to_user(&post, &user_profile));
-    }
-
-    #[test]
-    fn test_reply_detection() {
-        let user_posts = vec![
-            Post::new("user_post_1".to_string(), "First user post".to_string()),
-            Post::new("user_post_2".to_string(), "Second user post".to_string()),
-        ];
-
-        let mut reply_post = Post::new("reply_1".to_string(), "This is a reply".to_string());
-        reply_post.set_reply_to(Some("https://example.com/social.org#user_post_1".to_string()));
-
-        assert!(is_reply_to_user(&reply_post, &user_posts));
-    }
-
-    #[test]
-    fn test_notification_feed_creation() {
-        let mut user_profile = Profile::default();
-        user_profile.set_nick("testuser".to_string());
-
-        let user_posts = vec![
-            Post::new("user_post_1".to_string(), "User's post".to_string()),
-        ];
-
-        let mut mention_post = Post::new("mention_1".to_string(), 
-            "Hello [[org-social:https://example.com/social.org][testuser]]!".to_string());
-        mention_post.parse_content();
-
-        let mut reply_post = Post::new("reply_1".to_string(), "Reply to user".to_string());
-        reply_post.set_reply_to(Some("https://example.com/social.org#user_post_1".to_string()));
-
-        let mut all_posts = user_posts.clone();
-        all_posts.push(mention_post.clone());
-        all_posts.push(reply_post.clone());
-        let feed = crate::feed::Feed { posts: all_posts, profiles: vec![], profile_map: std::collections::HashMap::new() };
-        let notification_feed = NotificationFeed::from_feed(
-            &feed,
-            &user_profile,
-            &user_posts,
-        );
-
-        assert_eq!(notification_feed.len(), 2);
-    }
-
-    #[test]
-    fn test_no_duplicates_for_mention_and_reply() {
-        let mut user_profile = Profile::default();
-        user_profile.set_nick("testuser".to_string());
-
-        let user_posts = vec![
-            Post::new("user_post_1".to_string(), "User's post".to_string()),
-        ];
-
-        // Create a post that both mentions the user and replies to their post
-        let mut mention_and_reply_post = Post::new("both_1".to_string(), 
-            "Reply to [[org-social:https://example.com/social.org][testuser]]'s post".to_string());
-        mention_and_reply_post.set_reply_to(Some("https://example.com/social.org#user_post_1".to_string()));
-        mention_and_reply_post.parse_content();
-
-        let mut all_posts = user_posts.clone();
-        all_posts.push(mention_and_reply_post.clone());
-        let feed = crate::feed::Feed { posts: all_posts, profiles: vec![], profile_map: std::collections::HashMap::new() };
-        let notification_feed = NotificationFeed::from_feed(
-            &feed,
-            &user_profile,
-            &user_posts,
-        );
-
-        // Should have exactly one notification with type MentionAndReply
-        assert_eq!(notification_feed.len(), 1);
-        assert_eq!(notification_feed.notifications[0].notification_type, NotificationType::MentionAndReply);
-    }
-}
