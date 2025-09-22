@@ -4,6 +4,9 @@
 //! for parsing and serializing user profile metadata.
 
 use std::collections::HashMap;
+use std::fs;
+use std::io;
+use std::path::Path;
 
 /// Represents a user profile parsed from an org-social file.
 /// 
@@ -348,5 +351,115 @@ impl Profile {
         }
 
         Some(result)
+    }
+
+    /// Save this profile to a file, preserving comments, unknown lines, and posts section.
+    /// 
+    /// This function reads the existing file, identifies the profile section (everything before "* Posts"),
+    /// replaces only the known profile lines while preserving comments and unknown syntax in their
+    /// original positions, and keeps the posts section intact.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `file_path` - Path to the org-social file to update
+    /// 
+    /// # Returns
+    /// 
+    /// Result indicating success or failure with error details
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if the file cannot be read or written, or if I/O operations fail.
+    pub fn save_to_file<P: AsRef<Path>>(&self, file_path: P) -> io::Result<()> {
+        let file_path = file_path.as_ref();
+        
+        // Read existing file content, or start with empty if file doesn't exist
+        let existing_content = if file_path.exists() {
+            fs::read_to_string(file_path)?
+        } else {
+            String::new()
+        };
+        let lines: Vec<String> = existing_content
+            .lines()
+            .map(String::from)
+            .collect();
+
+        // Split into profile section and posts section
+        let posts_index = lines
+            .iter()
+            .position(|line| line.starts_with("* Posts"))
+            .unwrap_or(lines.len());
+        let profile_section_lines = lines.split_at(posts_index).0;
+        let posts_section_lines = if posts_index < lines.len() {
+            lines.split_at(posts_index).1
+        } else {
+            &[]
+        };
+
+        let known_profile_prefixes = [
+            "#+TITLE:",
+            "#+NICK:",
+            "#+DESCRIPTION:",
+            "#+AVATAR:",
+            "#+LINK:",
+            "#+FOLLOW:",
+            "#+GROUP:",
+            "#+CONTACT:",
+        ];
+
+        // Create a set of indices for lines that should be skipped (known profile lines)
+        let mut skip_indices = std::collections::HashSet::new();
+        for (i, line) in profile_section_lines.iter().enumerate() {
+            let is_known_profile_line = known_profile_prefixes
+                .iter()
+                .any(|prefix| line.trim().starts_with(prefix));
+            
+            if is_known_profile_line {
+                skip_indices.insert(i);
+            }
+        }
+
+        let mut output = Vec::new();
+
+        // Add profile section lines, preserving positions but skipping known profile lines
+        for (i, line) in profile_section_lines.iter().enumerate() {
+            if !skip_indices.contains(&i) {
+                output.push(line.clone());
+            }
+        }
+
+        // Find a good position to insert the new profile content
+        // We'll add it after any preserved lines but before posts
+        let profile_content = self.to_org_social();
+        if !profile_content.is_empty() {
+            // Add an empty line before profile if there were preserved lines
+            if !output.is_empty() && !output.last().unwrap().trim().is_empty() {
+                output.push("".to_string());
+            }
+            output.push(profile_content.clone());
+        }
+
+        // Add posts section if it existed, or create one if it didn't
+        if !posts_section_lines.is_empty() {
+            // Add empty line before posts section if profile content was added
+            if !profile_content.is_empty() {
+                output.push("".to_string());
+            }
+            for line in posts_section_lines {
+                output.push(line.clone());
+            }
+        } else {
+            // No posts section existed, so create one in preparation for future posts
+            if !profile_content.is_empty() {
+                output.push("".to_string());
+            }
+            output.push("* Posts".to_string());
+        }
+
+        // Write the new content to the file
+        let final_content = output.join("\n");
+        fs::write(file_path, final_content)?;
+
+        Ok(())
     }
 }

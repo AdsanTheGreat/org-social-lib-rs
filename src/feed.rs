@@ -221,7 +221,7 @@ impl Feed {
 
     /// Create a new Feed from user profile and posts, fetching followed feeds.
     pub async fn new_from_user(user_profile: &Profile, user_posts: Vec<Post>) -> Result<Self, Box<dyn std::error::Error>> {
-    let mut all_posts: Vec<Rc<RefCell<Post>>> = Vec::new();
+        let mut all_posts: Vec<Rc<RefCell<Post>>> = Vec::new();
         let mut profiles: Vec<Arc<Profile>> = Vec::new();
 
         // Add user profile to profiles
@@ -267,7 +267,7 @@ impl Feed {
 
     /// Create a Feed with user posts only (no network fetching).
     pub fn from_user_posts(user_profile: &Profile, user_posts: Vec<Post>) -> Self {
-    let mut posts: Vec<Rc<RefCell<Post>>> = Vec::new();
+        let mut posts: Vec<Rc<RefCell<Post>>> = Vec::new();
         let mut profiles: Vec<Arc<Profile>> = Vec::new();
         let user_profile_arc = Arc::new(user_profile.clone());
         profiles.push(user_profile_arc.clone());
@@ -289,6 +289,25 @@ impl Feed {
         }
 
         Feed { posts, profiles, profile_map, views: Vec::new() }
+    }
+
+    /// Create a Feed from posts and profiles.
+    /// Assumes that authors are set correctly in posts
+    pub fn from_posts_and_profiles(posts: Vec<Post>, profiles: Vec<Profile>) -> Self {
+        let rc_posts: Vec<Rc<RefCell<Post>>> = posts.into_iter().map(|p| Rc::new(RefCell::new(p))).collect();
+        let arc_profiles: Vec<Arc<Profile>> = profiles.into_iter().map(|p| Arc::new(p)).collect();
+
+        // Build post->profile map using Arc<Profile>
+        let mut profile_map: HashMap<String, Arc<Profile>> = HashMap::new();
+        for post in &rc_posts {
+            if let Some(author) = post.borrow().author() {
+                if let Some(profile_arc) = arc_profiles.iter().find(|p| p.nick() == author).cloned() {
+                    profile_map.insert(post.borrow().id().to_string(), profile_arc);
+                }
+            }
+        }
+
+        Feed { posts: rc_posts, profiles: arc_profiles, profile_map, views: Vec::new() }
     }
 }
 

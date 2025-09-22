@@ -18,6 +18,11 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
   - All relevant method signatures updated to use `Rc<RefCell<Post>>`
 
 ### Added
+- **Profile saving**: Added `Profile::save_to_file` method to save profile data back to org-social file
+  - Preserves existing file structure and content outside of known profile properties
+  - Overrides present profile properties with new values
+  - Creates a new file if it does not exist
+  - If there are no post section, the `* Posts` header is added
 - **Feed filtering**: Added filtering capabilities to the Feed
   - There are lang, tag, author, source and group premade filters
   - Filters cannot be combined this way - all filters are stripped before applying a new one
