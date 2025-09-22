@@ -3,6 +3,57 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 22-09-2025
+
+### Changed
+- **Update to spec version 1.3** - Group support, see below
+- **Feed Architecture**: Complete redesign separating data storage from presentation views
+  - Optimized for single-threaded use cases
+  - Feed now serves as pure data storage managing `Vec<Rc<RefCell<Post>>>` instead of owned posts
+  - Introduced `FeedView` trait for different feed presentation strategies
+  - Added `SimpleFeed` as the `FeedView` implementation for chronological display - the legacy "Feed"
+  - Feed manages multiple views via `Rc<RefCell<dyn FeedView>>`, and updates them on data changes
+- **Post Ownership & Mutability**: All post handling converted to `Rc<RefCell<Post>>` for shared ownership with interior mutability
+  - Replaced `Post` with `Rc<RefCell<Post>>` to enable safe post mutation in single-threaded contexts
+  - All relevant method signatures updated to use `Rc<RefCell<Post>>`
+- **Tokenizer Improvements**: Enhanced tokenizer to merge consecutive plain text tokens
+  - Previously, failure to close other tokens resulted in multiple consecutive plain text tokens
+  - Now, consecutive plain text tokens are merged into a single token for cleaner output
+  - Only tokens that are not separated by a newline are merged
+  - Should not affect existing behavior, as the tokens are equivalent
+
+### Added
+- **Profile saving**: Added `Profile::save_to_file` method to save profile data back to org-social file
+  - Preserves existing file structure and content outside of known profile properties
+  - Overrides present profile properties with new values
+  - Creates a new file if it does not exist
+  - If there are no post section, the `* Posts` header is added
+- **Feed filtering**: Added filtering capabilities to the Feed
+  - There are lang, tag, author, source and group premade filters
+  - Filters cannot be combined this way - all filters are stripped before applying a new one
+  - A custom filter function can be applied as well
+  - Filters are applied to all views, keeping the feed data intact
+  - Views can be refreshed to show all posts again
+  - Views themselves can also be filtered individually
+- **Group property**: Added support for the `:GROUP:` property in posts and profiles
+  - Profiles have a `Option<Vec<(String, String)>>` field representing group name and URL pairs
+  - Posts have a `Option<(String, String)>` field representing the group name and URL
+- **FeedView trait**: New trait defining view interface with methods:
+  - `update_content()` - Update view with new data
+  - `len()` - Get number of posts in view
+  - `is_empty()` - Check if view is empty
+  - `view_name()` - Get display name
+  - `refresh()` - Recompute derived data - currently fairly useless, since posts are immutable
+  - `apply_filter()` - Apply a filter function to the posts in this view
+
+### Technical Details
+- Memory efficiency improved by eliminating post data cloning across views and modules
+- Interior mutability enabled through `RefCell` for safe post mutation without thread-safety overhead
+- Clear separation between data storage (Feed) and presentation (FeedView implementations)
+- Post now implements Eq, PartialEq and Hash - only the id is considered for those traits
+- Profile now implements Eq, PartialEq and Hash - only the title & nick are considered for those traits
+- Tokenization now includes an extra pass to merge consecutive plain text tokens
+
 ## [0.4.3] - 10-09-2025
 ### Fixed
 - **Post summary**: Fixed the `Post::summary` function panicking when the split is in the middle of a multi-byte character (e.g. emoji)

@@ -38,6 +38,7 @@
 
 pub mod blocks;
 pub mod feed;
+pub mod feed_view;
 pub mod network;
 pub mod new_post;
 pub mod notifications;
