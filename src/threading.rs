@@ -430,6 +430,34 @@ impl FeedView for ThreadView {
         // Re-sort threads and update flattened view
         self.sort_threads();
     }
+
+    /// Apply a filter closure to the posts in this view
+    /// This keeps only branches of the thread tree where at least one post matches the filter.
+    fn apply_filter(&mut self, filter_fn: Box<dyn Fn(&Post) -> bool>) {
+        fn filter_node(node: &ThreadNode, filter_fn: &dyn Fn(&Post) -> bool) -> Option<ThreadNode> {
+            let mut filtered_replies = Vec::new();
+            for reply in &node.replies {
+                if let Some(filtered_reply) = filter_node(reply, filter_fn) {
+                    filtered_replies.push(filtered_reply);
+                }
+            }
+            let matches = filter_fn(&node.post.borrow());
+            if matches || !filtered_replies.is_empty() {
+                let mut new_node = node.clone();
+                new_node.replies = filtered_replies;
+                Some(new_node)
+            } else {
+                None
+            }
+        }
+
+        self.roots = self.roots
+            .iter()
+            .filter_map(|root| filter_node(root, &*filter_fn))
+            .collect();
+        // After filtering, update latest activity times and sort threads
+        self.sort_threads();
+    }
 }
 
 impl Default for ThreadView {

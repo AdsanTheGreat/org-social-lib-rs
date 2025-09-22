@@ -4,7 +4,7 @@
 //! over a shared collection of posts and profiles. Views can filter, sort, and present
 //! the data in different ways while sharing the underlying data.
 
-use crate::feed;
+use crate::{feed, post::Post};
 
 /// A trait for different views over feed data.
 ///
@@ -29,4 +29,7 @@ pub trait FeedView {
     
     /// Refresh the view - recompute any derived data
     fn refresh(&mut self);
+
+    /// Apply a filter function to the posts in this view
+    fn apply_filter(&mut self, filter_fn: Box<dyn Fn(&Post) -> bool>);
 }

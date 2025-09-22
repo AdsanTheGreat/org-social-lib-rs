@@ -18,6 +18,13 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
   - All relevant method signatures updated to use `Rc<RefCell<Post>>`
 
 ### Added
+- **Feed filtering**: Added filtering capabilities to the Feed
+  - There are lang, tag, author, source and group premade filters
+  - Filters cannot be combined this way - all filters are stripped before applying a new one
+  - A custom filter function can be applied as well
+  - Filters are applied to all views, keeping the feed data intact
+  - Views can be refreshed to show all posts again
+  - Views themselves can also be filtered individually
 - **Group property**: Added support for the `:GROUP:` property in posts and profiles
   - Profiles have a `Option<Vec<(String, String)>>` field representing group name and URL pairs
   - Posts have a `Option<(String, String)>` field representing the group name and URL

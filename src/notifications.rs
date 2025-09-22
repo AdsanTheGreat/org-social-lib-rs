@@ -5,6 +5,7 @@
 //! Notifications are sorted chronologically with newest first. 
 //! Duplicates of the same post are dropped.
 
+use crate::feed_view::FeedView;
 use crate::profile::Profile;
 use crate::post::Post;
 use crate::feed::Feed;
@@ -153,6 +154,46 @@ impl NotificationFeed {
     /// Check if the notification feed is empty
     pub fn is_empty(&self) -> bool {
         self.notifications.is_empty()
+    }
+}
+
+impl FeedView for NotificationFeed {
+    fn update_content(&mut self, feed: &Feed) {
+        self.notifications = NotificationFeed::from_feed(feed, &self.target_profile).notifications;
+        
+    }
+
+    fn len(&self) -> usize {
+        self.notifications.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.notifications.is_empty()
+    }
+    fn view_name(&self) -> &str {
+        "Notification View"
+    }
+
+    fn refresh(&mut self) {
+        self.notifications.sort_by(|a, b| {
+            let a_time = a.post.borrow().time();
+            let b_time = b.post.borrow().time();
+            match (a_time, b_time) {
+                (Some(time_a), Some(time_b)) => time_b.cmp(&time_a), // Reverse order for newest first
+                (Some(_), None) => std::cmp::Ordering::Less,         // Posts with time come before posts without
+                (None, Some(_)) => std::cmp::Ordering::Greater,      // Posts without time come after posts with time
+                (None, None) => std::cmp::Ordering::Equal,           // Equal if both don't have time
+            }
+        });
+    }
+
+    fn apply_filter(&mut self, filter_fn: Box<dyn Fn(&Post) -> bool>) {
+        self.notifications = self.notifications
+            .iter()
+            .filter(|notification| filter_fn(&notification.post.borrow()))
+            .cloned()
+            .collect();
+        self.refresh();
     }
 }
 

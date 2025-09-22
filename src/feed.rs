@@ -76,8 +76,14 @@ impl Feed {
         }
     }
 
+    pub fn update_view(&self, view: &Rc<RefCell<dyn FeedView>>) {
+        let mut v = view.borrow_mut();
+        v.update_content(&self);
+        v.refresh();
+    }
+
     /// Update all views with current data.
-    fn update_all_views(&mut self) {
+    pub fn update_all_views(&self) {
         for view in &self.views {
             let mut v = view.borrow_mut();
             v.update_content(&self);
@@ -115,6 +121,101 @@ impl Feed {
             profiles: Vec::new(),
             profile_map: HashMap::new(),
             views: Vec::new(),
+        }
+    }
+
+    /// Apply a language filter to all the views.
+    /// This keeps the feed itself unchanged.
+    /// The views can be updated to show all posts again.
+    /// Strips all filters before applying the new one.
+    pub fn filter_by_lang(&self, lang: &str) {
+        self.update_all_views();
+        for view in &self.views {
+            let lang = lang.to_string();
+            let closure = Box::new(move |post: &Post| post.lang().as_deref() == Some(&lang));
+            let mut v = view.borrow_mut();
+            v.apply_filter(closure);
+        }
+    }
+
+    /// Apply a tag filter to all the views. At least one tag must match.
+    /// This keeps the feed itself unchanged.
+    /// The views can be updated to show all posts again.
+    /// Strips all filters before applying the new one.
+    pub fn filter_by_tag(&self, tag: &str) {
+        self.update_all_views();
+        for view in &self.views {
+            let tag = tag.to_string();
+            let closure = Box::new(move |post: &Post| {
+                post.tags()
+                    .as_ref()
+                    .map(|tags| tags.iter().any(|t| t == &tag))
+                    .unwrap_or(false)
+            });
+            let mut v = view.borrow_mut();
+            v.apply_filter(closure);
+        }
+    }
+
+    /// Apply an author filter to all the views.
+    /// This keeps the feed itself unchanged.
+    /// The views can be updated to show all posts again.
+    /// Strips all filters before applying the new one.
+    pub fn filter_by_author(&self, author: &str) {
+        self.update_all_views();
+        for view in &self.views {
+            let author = author.to_string();
+            let closure = Box::new(move |post: &Post| post.author().as_deref() == Some(&author));
+            let mut v = view.borrow_mut();
+            v.apply_filter(closure);
+        }
+    }
+
+    /// Apply a source filter to all the views.
+    /// This keeps the feed itself unchanged.
+    /// The views can be updated to show all posts again.
+    /// Strips all filters before applying the new one.
+    pub fn filter_by_source(&self, source: &str) {
+        self.update_all_views();
+        for view in &self.views {
+            let source = source.to_string();
+            let closure = Box::new(move |post: &Post| {
+                post.source()
+                    .as_ref()
+                    .map(|s| s == &source)
+                    .unwrap_or(false)
+            });
+            let mut v = view.borrow_mut();
+            v.apply_filter(closure);
+        }
+    }
+
+    /// This keeps the feed itself unchanged.
+    /// The views can be updated to show all posts again.
+    /// Strips all filters before applying the new one.
+    pub fn filter_by_group(&self, group: &str) {
+        self.update_all_views();
+        for view in &self.views {
+            let group = group.to_string();
+            let closure = Box::new(move |post: &Post| {
+                post.group().as_ref().map(|(g, _)| g == &group).unwrap_or(false)
+            });
+            let mut v = view.borrow_mut();
+            v.apply_filter(closure);
+        }
+    }
+
+    /// Apply a custom filter closure to the posts in all views.
+    /// This keeps the feed itself unchanged.
+    /// The views can be updated to show all posts again.
+    pub fn filter_custom(&self, filter_fn: Box<dyn Fn(&Post) -> bool + Send + Sync + 'static>) {
+        use std::sync::Arc;
+        self.update_all_views();
+        let filter_fn = Arc::new(filter_fn);
+        for view in &self.views {
+            let filter_fn = Arc::clone(&filter_fn);
+            let mut v = view.borrow_mut();
+            v.apply_filter(Box::new(move |post| filter_fn(post)));
         }
     }
 
@@ -318,6 +419,15 @@ impl FeedView for SimpleFeed {
                 (None, None) => std::cmp::Ordering::Equal,
             }
         });
+    }
+
+    fn apply_filter(&mut self, filter_fn: Box<dyn Fn(&crate::post::Post) -> bool>) {
+        self.posts = self.posts
+            .iter()
+            .filter(|post| filter_fn(&post.borrow()))
+            .cloned()
+            .collect();
+        self.refresh();
     }
 }
 
