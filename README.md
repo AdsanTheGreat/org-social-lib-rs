@@ -11,10 +11,10 @@ It basically constitutes the backend of any org-social application.
 
 ## Features
 
-- **Org-social Parsing**: Parse org-social files into profiles and posts
+- **Org-social Parsing**: Parse org-social files into profiles and posts, and safely write them back in that format
 - **Network Fetching**: Asynchronous fetching of remote org-social feeds
 - **Threading System**: Build threaded conversation view from reply relationships
-- **Feed Aggregation**: Combine multiple feeds into a unified, chronologically sorted feed
+- **Feed Aggregation**: Combine multiple feeds into a unified collection of posts to be viewed in different ways
 - **Post Management**: Create, parse, and manage social posts with metadata
 - **Notifications support**: Get the most important notifications for a user
 - **Poll support**: Manage posts with polls
@@ -31,7 +31,11 @@ In no particular order:
   - Tables
   - Latex - maybe
   - Lists
-- Network exploration - view not followed users
+- Relay client implementation
+  - Registering feeds
+  - Exploring existing feeds
+  - Joining groups, managing posts in groups
+  - Poll & reply tracking - integration with current threadview system
 - Documentation
 
 ## Installation
@@ -40,7 +44,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-org-social-lib-rs = "0.4.0"
+org-social-lib-rs = "0.5.0"
 ```
 
 Or if you want to use the latest development version from git:

@@ -44,6 +44,7 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
   - `is_empty()` - Check if view is empty
   - `view_name()` - Get display name
   - `refresh()` - Recompute derived data - currently fairly useless, since posts are immutable
+  - `apply_filter()` - Apply a filter function to the posts in this view
 
 ### Technical Details
 - Memory efficiency improved by eliminating post data cloning across views and modules
