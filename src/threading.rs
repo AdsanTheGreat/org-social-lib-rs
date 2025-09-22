@@ -3,17 +3,17 @@
 //! This module provides functionality to organize posts into threaded conversations
 //! based on reply relationships, creating hierarchical tree structures for display.
 
-use crate::feed;
-use crate::{feed::Feed, feed_view::FeedView, poll::Poll, post::Post, profile::Profile};
+use crate::{feed::Feed, feed_view::FeedView, poll::Poll, post::Post};
 use chrono::{DateTime, FixedOffset};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 /// Represents a node in a threaded conversation tree.
 #[derive(Clone)]
 pub struct ThreadNode {
     /// The post at this node
-    pub post: Arc<Post>,
+    pub post: Rc<RefCell<Post>>,
     /// Direct replies to this post
     pub replies: Vec<ThreadNode>,
     /// Depth level in the conversation (0 = root)
@@ -33,8 +33,8 @@ pub struct ThreadView {
 }
 
 impl ThreadNode {
-    pub fn new(post: Arc<Post>, depth: usize) -> Self {
-        let latest_activity_time = post.time();
+    pub fn new(post: Rc<RefCell<Post>>, depth: usize) -> Self {
+        let latest_activity_time = post.borrow().time();
         Self {
             post,
             replies: Vec::new(),
@@ -56,7 +56,7 @@ impl ThreadNode {
         }
         
         // Start with this post's own time
-        let mut latest_time = self.post.time();
+        let mut latest_time = self.post.borrow().time();
         
         // Check all replies for later times
         for reply in &self.replies {
@@ -96,7 +96,7 @@ impl ThreadNode {
         1 + self.replies.iter().map(|r| r.count_posts()).sum::<usize>()
     }
 
-    pub fn flatten(&self) -> Vec<&Arc<Post>> {
+    pub fn flatten(&self) -> Vec<&Rc<RefCell<Post>>> {
         let mut posts = vec![&self.post];
         for reply in &self.replies {
             posts.extend(reply.flatten());
@@ -118,23 +118,26 @@ impl ThreadView {
 
         // Build ID mapping for quick lookups
         for post in feed.posts.iter() {
-            let full_id: String = post.full_id();
-            thread_view.id_map.insert(post.id().to_string(), full_id);
+            let post_ref = post.borrow();
+            let full_id: String = post_ref.full_id();
+            thread_view.id_map.insert(post_ref.id().to_string(), full_id);
         }
 
         // First pass: create nodes for all posts
         for post in feed.posts.iter() {
+            let post_ref = post.borrow();
             let node = ThreadNode::new(post.clone(), 0);
-            let full_id = post.full_id();
+            let full_id = post_ref.full_id();
             post_map.insert(full_id, node);
         }
 
         // Second pass: organize into threads and create placeholders for missing parents
         let post_map_clone = post_map.clone();
         for (_post_id, mut node) in post_map {
-            if let Some(reply_to) = node.post.reply_to() {
+            let reply_to = node.post.borrow().reply_to().clone();
+            if let Some(reply_to) = reply_to {
                 // This is a reply to another post
-                let reply_target = Self::resolve_reply_target(reply_to, &thread_view.id_map);
+                let reply_target = Self::resolve_reply_target(&reply_to, &thread_view.id_map);
                 
                 if let Some(parent_node) = post_map_clone.get(&reply_target) {
                     // Parent exists, add to reply map
@@ -149,7 +152,7 @@ impl ThreadView {
                     } else {
                         // No match found even by timestamp, create a placeholder
                         let placeholder_post = Self::create_placeholder_post(&reply_target);
-                        let placeholder_node = ThreadNode::new(Arc::new(placeholder_post), 0);
+                        let placeholder_node = ThreadNode::new(Rc::new(RefCell::new(placeholder_post)), 0);
                         node.depth = 1; // Reply to placeholder at depth 0
                         
                         // Add placeholder to placeholder_map and this node as its reply
@@ -212,7 +215,7 @@ impl ThreadView {
 
         // Search through all posts for one with this timestamp as the ID
         for (full_id, node) in post_map {
-            if node.post.id() == timestamp {
+            if node.post.borrow().id() == timestamp {
                 return Some(full_id.clone());
             }
         }
@@ -253,7 +256,7 @@ impl ThreadView {
 
     /// Recursively attach replies to a specific node.
     fn attach_replies_to_node(node: &mut ThreadNode, reply_map: &HashMap<String, Vec<ThreadNode>>) {
-        let node_id = node.post.full_id();
+        let node_id = node.post.borrow().full_id();
         if let Some(replies) = reply_map.get(&node_id) {
             for mut reply in replies.clone() {
                 Self::attach_replies_to_node(&mut reply, reply_map);
@@ -293,7 +296,7 @@ impl ThreadView {
         self.roots.iter().map(|r| r.count_posts()).sum()
     }
 
-    pub fn flatten(&self) -> Vec<&Arc<Post>> {
+    pub fn flatten(&self) -> Vec<&Rc<RefCell<Post>>> {
         let mut posts = Vec::new();
         for root in &self.roots {
             posts.extend(root.flatten());
@@ -308,7 +311,7 @@ impl ThreadView {
     pub fn update_poll_node(&self, post_node: &ThreadNode, poll: &mut Poll) {
         poll.clear_votes();
         for reply in &post_node.replies {
-            poll.add_vote_from_reply(&reply.post);
+            poll.add_vote_from_reply(&*reply.post.borrow());
         }
     }
 
@@ -322,19 +325,20 @@ impl ThreadView {
     ///
     /// # Arguments
     /// * `post` - The new post to add to the thread tree
-    pub fn add_post(&mut self, post: Arc<Post>) {
-        if let Some(reply_to) = post.reply_to() {
-            let reply_target = Self::resolve_reply_target(reply_to, &self.id_map);
+    pub fn add_post(&mut self, post: Rc<RefCell<Post>>) {
+        if let Some(reply_to) = post.borrow().reply_to().clone() {
+            let reply_target = Self::resolve_reply_target(&reply_to, &self.id_map);
             
             // Try to find the parent in existing threads
             if self.find_and_add_reply(&reply_target, post.clone()).is_some() {
-                self.id_map.insert(post.id().to_string(), post.full_id());
+                let post_borrow = post.borrow();
+                self.id_map.insert(post_borrow.id().to_string(), post_borrow.full_id());
                 
                 self.sort_threads();
             } else {
                 // Parent not found - create placeholder and add as new root thread
                 let placeholder_post = Self::create_placeholder_post(&reply_target);
-                let mut placeholder_node = ThreadNode::new(Arc::new(placeholder_post), 0);
+                let mut placeholder_node = ThreadNode::new(Rc::new(RefCell::new(placeholder_post)), 0);
                 
                 let reply_node = ThreadNode::new(post.clone(), 1);
                 placeholder_node.add_reply(reply_node);
@@ -343,7 +347,8 @@ impl ThreadView {
                 
                 self.roots.push(placeholder_node);
                 
-                self.id_map.insert(post.id().to_string(), post.full_id());
+                let post_borrow = post.borrow();
+                self.id_map.insert(post_borrow.id().to_string(), post_borrow.full_id());
                 
                 // Resort threads
                 self.sort_threads();
@@ -353,7 +358,8 @@ impl ThreadView {
             let new_root = ThreadNode::new(post.clone(), 0);
             self.roots.push(new_root);
             
-            self.id_map.insert(post.id().to_string(), post.full_id());
+            let post_borrow = post.borrow();
+            self.id_map.insert(post_borrow.id().to_string(), post_borrow.full_id());
             
             // Resort threads
             self.sort_threads();
@@ -362,7 +368,7 @@ impl ThreadView {
 
     /// Recursively search for a target post ID and add a reply to it.
     /// Returns Some(depth) if the reply was successfully added, None if target not found.
-    fn find_and_add_reply(&mut self, target_id: &str, reply_post: Arc<Post>) -> Option<usize> {
+    fn find_and_add_reply(&mut self, target_id: &str, reply_post: Rc<RefCell<Post>>) -> Option<usize> {
         for root in &mut self.roots {
             if let Some(depth) = Self::find_and_add_reply_to_node(root, target_id, reply_post.clone()) {
                 return Some(depth);
@@ -373,9 +379,9 @@ impl ThreadView {
 
     /// Recursively search within a specific node and its descendants for the target ID.
     /// Returns Some(depth) if the reply was successfully added, None if target not found.
-    fn find_and_add_reply_to_node(node: &mut ThreadNode, target_id: &str, reply_post: Arc<Post>) -> Option<usize> {
+    fn find_and_add_reply_to_node(node: &mut ThreadNode, target_id: &str, reply_post: Rc<RefCell<Post>>) -> Option<usize> {
         // Check if this node is the target
-        if node.post.full_id() == target_id {
+        if node.post.borrow().full_id() == target_id {
             let reply_depth = node.depth + 1;
             let reply_node = ThreadNode::new(reply_post, reply_depth);
             node.add_reply(reply_node);
@@ -450,17 +456,18 @@ impl ThreadView {
     fn display_node(f: &mut std::fmt::Formatter<'_>, node: &ThreadNode, prefix: &str) -> std::fmt::Result {
         // Display the post with indentation
         let indent = "  ".repeat(node.depth);
-        writeln!(f, "{}{}Post ID: {}", prefix, indent, node.post.id())?;
+        let post = node.post.borrow();
+        writeln!(f, "{}{}Post ID: {}", prefix, indent, post.id())?;
         
-        if let Some(time) = node.post.time() {
+        if let Some(time) = post.time() {
             writeln!(f, "{prefix}{indent}Time: {time}")?;
         }
         
-        if let Some(author) = node.post.author() {
+        if let Some(author) = post.author() {
             writeln!(f, "{prefix}{indent}Author: {author}")?;
         }
         
-        writeln!(f, "{}{}Content: {}", prefix, indent, node.post.content())?;
+        writeln!(f, "{}{}Content: {}", prefix, indent, post.content())?;
         
         // Display replies
         for reply in &node.replies {
@@ -494,17 +501,17 @@ mod tests {
         
         // The root should be a placeholder post
         let root = &thread_view.roots[0];
-        assert_eq!(root.post.id(), "missing_post");
-        assert_eq!(root.post.content(), "[Post not available]");
-        assert_eq!(root.post.author().as_deref(), Some("unknown"));
+        assert_eq!(root.post.borrow().id(), "missing_post");
+        assert_eq!(root.post.borrow().content(), "[Post not available]");
+        assert_eq!(root.post.borrow().author().as_deref(), Some("unknown"));
         
         // The placeholder should have one reply
         assert_eq!(root.replies.len(), 1);
         
         // The reply should be our original post
         let reply_node = &root.replies[0];
-        assert_eq!(reply_node.post.id(), "reply1");
-        assert_eq!(reply_node.post.content(), "This is a reply");
+        assert_eq!(reply_node.post.borrow().id(), "reply1");
+        assert_eq!(reply_node.post.borrow().content(), "This is a reply");
         assert_eq!(reply_node.depth, 1);
     }
 
@@ -528,7 +535,7 @@ mod tests {
         
         // The root should be a placeholder post with two replies
         let root = &thread_view.roots[0];
-        assert_eq!(root.post.id(), "missing_post");
+        assert_eq!(root.post.borrow().id(), "missing_post");
         assert_eq!(root.replies.len(), 2);
         
         // Both replies should be at depth 1
@@ -558,16 +565,16 @@ mod tests {
         
         // The root should be the original post
         let root = &thread_view.roots[0];
-        assert_eq!(root.post.id(), "2025-08-15T10:30:00+00:00");
-        assert_eq!(root.post.content(), "Original post");
+        assert_eq!(root.post.borrow().id(), "2025-08-15T10:30:00+00:00");
+        assert_eq!(root.post.borrow().content(), "Original post");
         
         // The original post should have one reply
         assert_eq!(root.replies.len(), 1);
         
         // The reply should be our reply post
         let reply_node = &root.replies[0];
-        assert_eq!(reply_node.post.id(), "reply1");
-        assert_eq!(reply_node.post.content(), "This is a reply");
+        assert_eq!(reply_node.post.borrow().id(), "reply1");
+        assert_eq!(reply_node.post.borrow().content(), "This is a reply");
         assert_eq!(reply_node.depth, 1);
     }
 
@@ -589,17 +596,17 @@ mod tests {
         
         // The root should be a placeholder post
         let root = &thread_view.roots[0];
-        assert_eq!(root.post.id(), "2025-12-25T00:00:00+00:00");
-        assert_eq!(root.post.content(), "[Post not available]");
-        assert_eq!(root.post.author().as_deref(), Some("unknown"));
+        assert_eq!(root.post.borrow().id(), "2025-12-25T00:00:00+00:00");
+        assert_eq!(root.post.borrow().content(), "[Post not available]");
+        assert_eq!(root.post.borrow().author().as_deref(), Some("unknown"));
         
         // The placeholder should have one reply
         assert_eq!(root.replies.len(), 1);
         
         // The reply should be our original post
         let reply_node = &root.replies[0];
-        assert_eq!(reply_node.post.id(), "reply1");
-        assert_eq!(reply_node.post.content(), "This is a reply");
+        assert_eq!(reply_node.post.borrow().id(), "reply1");
+        assert_eq!(reply_node.post.borrow().content(), "This is a reply");
         assert_eq!(reply_node.depth, 1);
     }
 }

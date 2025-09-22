@@ -8,12 +8,14 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
 ### Changed
 - **Update to spec version 1.3** - Group support, see below
 - **Feed Architecture**: Complete redesign separating data storage from presentation views
-  - Feed now serves as pure data storage managing `Vec<Arc<Post>>` instead of owned posts
+  - Optimized for single-threaded use cases
+  - Feed now serves as pure data storage managing `Vec<Rc<RefCell<Post>>>` instead of owned posts
   - Introduced `FeedView` trait for different feed presentation strategies
   - Added `SimpleFeed` as the `FeedView` implementation for chronological display - the legacy "Feed"
-  - Feed manages multiple views via `Arc<Mutex<dyn FeedView>>`, for safe updates and sharing.
-- **Post Ownership**: All post handling converted to `Arc<Post>` for shared ownership without cloning
-  - All method signatures updated to use `Arc<Post>`
+  - Feed manages multiple views via `Rc<RefCell<dyn FeedView>>`, and updates them on data changes
+- **Post Ownership & Mutability**: All post handling converted to `Rc<RefCell<Post>>` for shared ownership with interior mutability
+  - Replaced `Post` with `Rc<RefCell<Post>>` to enable safe post mutation in single-threaded contexts
+  - All relevant method signatures updated to use `Rc<RefCell<Post>>`
 
 ### Added
 - **Group property**: Added support for the `:GROUP:` property in posts and profiles
@@ -28,7 +30,7 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
 
 ### Technical Details
 - Memory efficiency improved by eliminating post data cloning across views and modules
-- Thread safety enhanced through consistent use of `Arc<T>` for shared ownership
+- Interior mutability enabled through `RefCell` for safe post mutation without thread-safety overhead
 - Clear separation between data storage (Feed) and presentation (FeedView implementations)
 - Post now implements Eq, PartialEq and Hash - only the id is considered for those traits
 - Profile now implements Eq, PartialEq and Hash - only the title & nick are considered for those traits

@@ -7,10 +7,12 @@
 //! while delegating presentation and filtering to various `FeedView` implementations.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::profile::Profile;
 use crate::post::Post;
+use std::rc::Rc;
+use std::cell::RefCell;
 use crate::feed_view::FeedView;
 use crate::network;
 
@@ -20,19 +22,17 @@ use crate::network;
 /// and manages multiple views that can present the data in different ways.
 /// Views share immutable references to the underlying data without cloning.
 pub struct Feed {
-    pub posts: Vec<Arc<Post>>,
+    pub posts: Vec<Rc<RefCell<Post>>>,
     pub profiles: Vec<Arc<Profile>>,
     pub profile_map: HashMap<String, Arc<Profile>>, // Maps post ID to profile
-    pub views: Vec<Arc<Mutex<dyn FeedView>>>,
+    pub views: Vec<Rc<RefCell<dyn FeedView>>>,
 }
 
 impl Feed {
     /// Add a view to this feed.
-    pub fn add_view(&mut self, view: Arc<Mutex<dyn FeedView>>) {
+    pub fn add_view(&mut self, view: Rc<RefCell<dyn FeedView>>) {
         // Update the view with current data
-        if let Ok(mut v) = view.lock() {
-            v.update_content(&self);
-        }
+        view.borrow_mut().update_content(&self);
         self.views.push(view);
     }
 
@@ -40,28 +40,24 @@ impl Feed {
     pub fn remove_view(&mut self, view_name: &str) -> bool {
         let initial_len = self.views.len();
         self.views.retain(|view| {
-            if let Ok(v) = view.lock() {
-                v.view_name() != view_name
-            } else {
-                true // Keep views that can't be locked
-            }
+            view.borrow().view_name() != view_name
         });
         self.views.len() != initial_len
     }
 
     /// Add posts to the feed and update all views.
     pub fn add_posts(&mut self, new_posts: Vec<Post>) {
-        let arc_posts: Vec<Arc<Post>> = new_posts.into_iter().map(Arc::new).collect();
-        self.posts.extend(arc_posts);
+    let rc_posts: Vec<Rc<RefCell<Post>>> = new_posts.into_iter().map(|p| Rc::new(RefCell::new(p))).collect();
+    self.posts.extend(rc_posts);
         self.update_all_views();
     }
 
     /// Add a single post to the feed and update all views.
-    pub fn add_post(&mut self, post: Post) -> Arc<Post> {
-        let arc_post = Arc::new(post);
-        self.posts.push(arc_post.clone());
+    pub fn add_post(&mut self, post: Post) -> Rc<RefCell<Post>> {
+        let rc_post = Rc::new(RefCell::new(post));
+        self.posts.push(rc_post.clone());
         self.update_all_views();
-        arc_post
+        rc_post
     }
 
     /// Add a profile to the feed.
@@ -83,23 +79,22 @@ impl Feed {
     /// Update all views with current data.
     fn update_all_views(&mut self) {
         for view in &self.views {
-            if let Ok(mut v) = view.lock() {
-                v.update_content(&self);
-                v.refresh();
-            }
+            let mut v = view.borrow_mut();
+            v.update_content(&self);
+            v.refresh();
         }
     }
 
     /// Get the profile for a specific post.
-    pub fn profile_for_post(&self, post: &Arc<Post>) -> Option<&Arc<Profile>> {
-        self.profile_map.get(post.id())
+    pub fn profile_for_post(&self, post: &Rc<RefCell<Post>>) -> Option<&Arc<Profile>> {
+        self.profile_map.get(post.borrow().id())
     }
 
     /// Get all posts from a single profile.
-    pub fn posts_from_profile(&self, profile: &Profile) -> Vec<&Arc<Post>> {
+    pub fn posts_from_profile(&self, profile: &Profile) -> Vec<Rc<RefCell<Post>>> {
         self.posts.iter().filter(|post| {
-            self.profile_map.get(post.id()).map(|p| p.as_ref() == profile).unwrap_or(false)
-        }).collect()
+            self.profile_map.get(post.borrow().id()).map(|p| p.as_ref() == profile).unwrap_or(false)
+        }).cloned().collect()
     }
 
     /// Get the number of posts.
@@ -114,9 +109,9 @@ impl Feed {
 
     /// Create a feed from posts for testing purposes.
     pub fn from_posts(posts: Vec<Post>) -> Self {
-        let arc_posts: Vec<Arc<Post>> = posts.into_iter().map(Arc::new).collect();
+        let rc_posts: Vec<Rc<RefCell<Post>>> = posts.into_iter().map(|p| Rc::new(RefCell::new(p))).collect();
         Feed {
-            posts: arc_posts,
+            posts: rc_posts,
             profiles: Vec::new(),
             profile_map: HashMap::new(),
             views: Vec::new(),
@@ -125,7 +120,7 @@ impl Feed {
 
     /// Create a new Feed from user profile and posts, fetching followed feeds.
     pub async fn new_from_user(user_profile: &Profile, user_posts: Vec<Post>) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut all_posts = Vec::new();
+    let mut all_posts: Vec<Rc<RefCell<Post>>> = Vec::new();
         let mut profiles: Vec<Arc<Profile>> = Vec::new();
 
         // Add user profile to profiles
@@ -141,7 +136,7 @@ impl Feed {
         // Build post list
         for mut post in user_posts {
             post.set_author(user_profile.nick().to_string());
-            all_posts.push(Arc::new(post));
+            all_posts.push(Rc::new(RefCell::new(post)));
         }
         for (profile, posts, source) in followed_feeds {
             let author_nick = if profile.nick().is_empty() {
@@ -152,7 +147,7 @@ impl Feed {
             for mut post in posts {
                 post.set_author(author_nick.clone());
                 post.set_source(Some(source.clone()));
-                all_posts.push(Arc::new(post));
+                all_posts.push(Rc::new(RefCell::new(post)));
             }
         }
 
@@ -160,10 +155,10 @@ impl Feed {
         let mut profile_map: HashMap<String, Arc<Profile>> = HashMap::new();
         for post in &all_posts {
             let profile_arc = profiles.iter()
-                .find(|p| post.author().as_deref() == Some(p.nick()))
+                .find(|p| post.borrow().author().as_deref() == Some(p.nick()))
                 .cloned()
                 .unwrap_or(user_profile_arc.clone());
-            profile_map.insert(post.id().to_string(), profile_arc);
+            profile_map.insert(post.borrow().id().to_string(), profile_arc);
         }
 
         Ok(Feed { posts: all_posts, profiles, profile_map, views: Vec::new() })
@@ -171,7 +166,7 @@ impl Feed {
 
     /// Create a Feed with user posts only (no network fetching).
     pub fn from_user_posts(user_profile: &Profile, user_posts: Vec<Post>) -> Self {
-        let mut posts = Vec::new();
+    let mut posts: Vec<Rc<RefCell<Post>>> = Vec::new();
         let mut profiles: Vec<Arc<Profile>> = Vec::new();
         let user_profile_arc = Arc::new(user_profile.clone());
         profiles.push(user_profile_arc.clone());
@@ -179,21 +174,21 @@ impl Feed {
         // Set author for user's own posts
         for mut post in user_posts {
             post.set_author(user_profile.nick().to_string());
-            posts.push(Arc::new(post));
+            posts.push(Rc::new(RefCell::new(post)));
         }
 
         // Build post->profile map using Arc<Profile>
         let mut profile_map: HashMap<String, Arc<Profile>> = HashMap::new();
         for post in &posts {
             let profile_arc = profiles.iter()
-                .find(|p| post.author().as_deref() == Some(p.nick()))
+                .find(|p| post.borrow().author().as_deref() == Some(p.nick()))
                 .cloned()
                 .unwrap_or(user_profile_arc.clone());
-            profile_map.insert(post.id().to_string(), profile_arc);
+            profile_map.insert(post.borrow().id().to_string(), profile_arc);
         }
 
         Feed { posts, profiles, profile_map, views: Vec::new() }
-    }    
+    }
 }
 
 /// A simple chronologically sorted feed view.
@@ -201,7 +196,7 @@ impl Feed {
 /// This is the basic feed implementation that presents posts in chronological order.
 /// It operates on the underlying Feed data without duplicating storage.
 pub struct SimpleFeed {
-    posts: Vec<Arc<Post>>,
+    posts: Vec<Rc<RefCell<Post>>>,
 }
 
 impl SimpleFeed {
@@ -218,7 +213,7 @@ impl SimpleFeed {
 
         // Sort posts chronologically (newest first)
         sorted_posts.sort_by(|a, b| {
-            match (a.time(), b.time()) {
+            match (a.borrow().time(), b.borrow().time()) {
                 (Some(time_a), Some(time_b)) => time_b.cmp(&time_a), // Reverse order for newest first
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
@@ -247,42 +242,42 @@ impl SimpleFeed {
         &self,
         start: chrono::DateTime<chrono::FixedOffset>,
         end: chrono::DateTime<chrono::FixedOffset>,
-    ) -> Vec<&Arc<Post>> {
+    ) -> Vec<Rc<RefCell<Post>>> {
         self.posts
             .iter()
             .filter(|post| {
-                if let Some(post_time) = post.time() {
+                if let Some(post_time) = post.borrow().time() {
                     post_time >= start && post_time <= end
                 } else {
                     false
                 }
             })
+            .cloned()
             .collect()
     }
 
-    pub fn get_recent_posts(&self, limit: usize) -> Vec<&Arc<Post>> {
-        self.posts.iter().take(limit).collect()
+    pub fn get_recent_posts(&self, limit: usize) -> Vec<Rc<RefCell<Post>>> {
+        self.posts.iter().take(limit).cloned().collect()
     }
 
-    pub fn posts_from_source(&self, source: &str) -> Vec<&Arc<Post>> {
+    pub fn posts_from_source(&self, source: &str) -> Vec<Rc<RefCell<Post>>> {
         self.posts
             .iter()
             .filter(|post| {
-                post.source()
+                post.borrow().source()
                     .as_ref()
                     .map(|s| s == source)
                     .unwrap_or(false)
             })
+            .cloned()
             .collect()
     }
 
     pub fn sources(&self) -> Vec<String> {
         let mut sources: Vec<String> = self.posts
             .iter()
-            .filter_map(|post| post.source().as_ref())
-            .cloned()
+            .filter_map(|post| post.borrow().source().as_ref().cloned())
             .collect();
-        
         sources.sort();
         sources.dedup();
         sources
@@ -316,7 +311,7 @@ impl FeedView for SimpleFeed {
     fn refresh(&mut self) {
         // Sort posts chronologically (newest first)
         self.posts.sort_by(|a, b| {
-            match (a.time(), b.time()) {
+            match (a.borrow().time(), b.borrow().time()) {
                 (Some(time_a), Some(time_b)) => time_b.cmp(&time_a), // Reverse order for newest first
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
@@ -330,14 +325,15 @@ impl std::fmt::Display for SimpleFeed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "SimpleFeed with {} posts:", self.posts.len())?;
         for (i, post) in self.posts.iter().enumerate() {
+            let post_ref = post.borrow();
             writeln!(f, "--- Post {} ---", i + 1)?;
-            if let Some(time) = post.time() {
+            if let Some(time) = post_ref.time() {
                 writeln!(f, "Time: {time}")?;
             }
-            if let Some(source) = post.source() {
+            if let Some(source) = post_ref.source() {
                 writeln!(f, "Source: {source}")?;
             }
-            writeln!(f, "{post}")?;
+            writeln!(f, "{post_ref}")?;
             writeln!(f)?;
         }
         Ok(())

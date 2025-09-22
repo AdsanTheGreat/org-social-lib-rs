@@ -11,7 +11,7 @@ use crate::feed;
 /// Feed views provide different ways to present and interact with the same
 /// underlying collection of posts and profiles. Views share references to
 /// the posts without cloning the actual post data.
-pub trait FeedView: Send + Sync {  
+pub trait FeedView {
     /// Update the view with new posts and profiles.
     /// This is called by the parent Feed when the underlying data changes, and when the view is first added.
     fn update_content(&mut self, feed: &feed::Feed);

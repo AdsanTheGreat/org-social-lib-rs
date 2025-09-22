@@ -7,11 +7,11 @@
 
 use crate::profile::Profile;
 use crate::post::Post;
-use crate::feed::{self, Feed};
+use crate::feed::Feed;
 use crate::tokenizer::Token;
 use chrono::{DateTime, FixedOffset};
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 /// Types of notifications that can occur
 #[derive(Debug, Clone, PartialEq)]
@@ -27,12 +27,12 @@ pub enum NotificationType {
 /// Represents a notification containing a post and the reason for notification
 #[derive(Debug, Clone)]
 pub struct Notification {
-    pub post: Arc<Post>,
+    pub post: Rc<RefCell<Post>>,
     pub notification_type: NotificationType,
 }
 
 impl Notification {
-    pub fn new(post: Arc<Post>, notification_type: NotificationType) -> Self {
+    pub fn new(post: Rc<RefCell<Post>>, notification_type: NotificationType) -> Self {
         Self {
             post,
             notification_type,
@@ -53,13 +53,14 @@ impl NotificationFeed {
         let user_posts = feed.posts_from_profile(&user_profile);
 
         for post in feed.posts.iter() {
+            let post_ref = post.borrow();
             // Skip the user's own posts
-            if post.author() == &Some(user_profile.nick().to_string()) {
+            if post_ref.author() == &Some(user_profile.nick().to_string()) {
                 continue;
             }
 
-            let is_mention = is_mention_to_user(&post, &user_profile);
-            let is_reply = is_reply_to_user(&post, &user_posts);
+            let is_mention = is_mention_to_user(&post_ref, &user_profile);
+            let is_reply = is_reply_to_user(&post_ref, &user_posts);
 
             let notification_type = match (is_mention, is_reply) {
                 (true, true) => Some(NotificationType::MentionAndReply),
@@ -75,7 +76,9 @@ impl NotificationFeed {
 
         // Sort notifications chronologically (newest first)
         notifications.sort_by(|a, b| {
-            match (a.post.time(), b.post.time()) {
+            let a_time = a.post.borrow().time();
+            let b_time = b.post.borrow().time();
+            match (a_time, b_time) {
                 (Some(time_a), Some(time_b)) => time_b.cmp(&time_a), // Reverse order for newest first
                 (Some(_), None) => std::cmp::Ordering::Less,         // Posts with time come before posts without
                 (None, Some(_)) => std::cmp::Ordering::Greater,      // Posts without time come after posts with time
@@ -104,7 +107,7 @@ impl NotificationFeed {
         self.notifications
             .iter()
             .filter(|notification| {
-                if let Some(post_time) = notification.post.time() {
+                if let Some(post_time) = notification.post.borrow().time() {
                     post_time >= start && post_time <= end
                 } else {
                     false
@@ -207,7 +210,7 @@ fn is_mention_to_user(post: &Post, user_profile: &Profile) -> bool {
 /// # Returns
 ///
 /// `true` if the post is a reply to any of the user's posts, `false` otherwise
-fn is_reply_to_user(post: &Post, user_posts: &Vec<&Arc<Post>>) -> bool {
+fn is_reply_to_user(post: &Post, user_posts: &Vec<Rc<RefCell<Post>>>) -> bool {
     if let Some(reply_to) = post.reply_to() {
         // Extract the post ID from the reply_to URL
         let reply_id = if let Some(hash_pos) = reply_to.rfind('#') {
@@ -217,7 +220,7 @@ fn is_reply_to_user(post: &Post, user_posts: &Vec<&Arc<Post>>) -> bool {
         };
 
         // Check if any user post matches this reply ID
-        return user_posts.iter().any(|user_post| user_post.id() == reply_id);
+        return user_posts.iter().any(|user_post| user_post.borrow().id() == reply_id);
     }
 
     false
@@ -229,16 +232,17 @@ impl std::fmt::Display for NotificationFeed {
         
         for (i, notification) in self.notifications.iter().enumerate() {
             writeln!(f, "--- Notification {} ({:?}) ---", i + 1, notification.notification_type)?;
-            if let Some(time) = notification.post.time() {
+            let post_ref = notification.post.borrow();
+            if let Some(time) = post_ref.time() {
                 writeln!(f, "Time: {time}")?;
             }
-            if let Some(author) = notification.post.author() {
+            if let Some(author) = post_ref.author() {
                 writeln!(f, "Author: {author}")?;
             }
-            if let Some(source) = notification.post.source() {
+            if let Some(source) = post_ref.source() {
                 writeln!(f, "Source: {source}")?;
             }
-            writeln!(f, "{}", notification.post)?;
+            writeln!(f, "{}", post_ref)?;
             writeln!(f)?;
         }
         
