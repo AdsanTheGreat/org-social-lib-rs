@@ -49,7 +49,8 @@ impl Tokenizer {
             }
         }
         
-        tokens
+        // Merge consecutive plaintext tokens for cleaner output
+        self.merge_consecutive_plaintext(tokens)
     }
 
     fn next_token(&mut self) -> Option<Token> {
@@ -358,6 +359,54 @@ impl Tokenizer {
     fn advance(&mut self, count: usize) {
         self.position = std::cmp::min(self.position + count, self.input.len());
     }
+
+    /// Merges consecutive PlainText tokens that are not separated by newlines
+    /// This helps clean up fragmented plaintext tokens that can occur when
+    /// parsing of other token types fails
+    fn merge_consecutive_plaintext(&self, tokens: Vec<Token>) -> Vec<Token> {
+        if tokens.is_empty() {
+            return tokens;
+        }
+
+        let mut merged = Vec::new();
+        let mut current_plaintext = String::new();
+        
+        for token in tokens {
+            match token {
+                Token::PlainText(text) => {
+                    // Check if the text contains newlines
+                    if text.contains('\n') {
+                        // If we have accumulated plaintext, add it first
+                        if !current_plaintext.is_empty() {
+                            merged.push(Token::PlainText(current_plaintext.clone()));
+                            current_plaintext.clear();
+                        }
+                        merged.push(Token::PlainText(text));
+                    } else {
+                        // Accumulate consecutive plaintext without newlines
+                        current_plaintext.push_str(&text);
+                    }
+                }
+                other_token => {
+                    // We hit a non-plaintext token
+                    // First, add any accumulated plaintext
+                    if !current_plaintext.is_empty() {
+                        merged.push(Token::PlainText(current_plaintext.clone()));
+                        current_plaintext.clear();
+                    }
+                    // Then add the other token
+                    merged.push(other_token);
+                }
+            }
+        }
+        
+        // Add the remaining accumulated plaintext if any
+        if !current_plaintext.is_empty() {
+            merged.push(Token::PlainText(current_plaintext));
+        }
+        
+        merged
+    }
 }
 
 #[cfg(test)]
@@ -414,13 +463,11 @@ mod tests {
             let mut tokenizer = Tokenizer::new(input.clone());
             let tokens = tokenizer.tokenize();
             
-            // Should be parsed as separate plain text tokens
+            // Should be parsed as merged plain text tokens (consecutive ones are now merged)
             assert_eq!(tokens, vec![
-                Token::PlainText("This ".to_string()),
-                Token::PlainText(delimiter.to_string()),
+                Token::PlainText(format!("This {}", delimiter)),
                 Token::PlainText("spans\nmultiple".to_string()),
-                Token::PlainText(delimiter.to_string()),
-                Token::PlainText(" lines".to_string()),
+                Token::PlainText(format!("{} lines", delimiter)),
             ], "Failed for delimiter: {}", delimiter);
         }
     }
@@ -441,24 +488,21 @@ mod tests {
     #[test]
     fn test_formatting_empty_content_rejected() {
         let test_cases = vec![
-            ("**", '*'),
-            ("//", '/'),
-            ("__", '_'),
-            ("++", '+'),
-            ("~~", '~'),
+            "**",
+            "//",
+            "__",
+            "++",
+            "~~",
         ];
 
-        for (input, delimiter) in test_cases {
+        for input in test_cases {
             let test_input = format!("This is {} empty", input);
             let mut tokenizer = Tokenizer::new(test_input.clone());
             let tokens = tokenizer.tokenize();
             
-            // Should be parsed as separate plain text tokens
+            // Should be parsed as merged plain text (consecutive plaintext tokens are now merged)
             assert_eq!(tokens, vec![
-                Token::PlainText("This is ".to_string()),
-                Token::PlainText(delimiter.to_string()),
-                Token::PlainText(delimiter.to_string()),
-                Token::PlainText(" empty".to_string()),
+                Token::PlainText(format!("This is {} empty", input)),
             ], "Failed for input: {}", input);
         }
     }
@@ -467,24 +511,21 @@ mod tests {
     #[test]
     fn test_formatting_unclosed_delimiters() {
         let test_cases = vec![
-            ("*unclosed bold", '*'),
-            ("/unclosed italic", '/'),
-            ("_unclosed underline", '_'),
-            ("+unclosed strikethrough", '+'),
-            ("~unclosed code", '~'),
+            "*unclosed bold",
+            "/unclosed italic",
+            "_unclosed underline",
+            "+unclosed strikethrough",
+            "~unclosed code",
         ];
 
-        for (input, delimiter) in test_cases {
+        for input in test_cases {
             let test_input = format!("This is {}", input);
             let mut tokenizer = Tokenizer::new(test_input.clone());
             let tokens = tokenizer.tokenize();
             
-            // Should be parsed as separate plain text tokens
-            let expected_text = input.split_at(1);
+            // Should be parsed as merged plain text (consecutive plaintext tokens are now merged)
             assert_eq!(tokens, vec![
-                Token::PlainText("This is ".to_string()),
-                Token::PlainText(delimiter.to_string()),
-                Token::PlainText(expected_text.1.to_string()),
+                Token::PlainText(format!("This is {}", input)),
             ], "Failed for input: {}", input);
         }
     }
@@ -590,11 +631,9 @@ mod tests {
         let mut tokenizer = Tokenizer::new("Connect via ftp://files.example.com or matrix://matrix.org".to_string());
         let tokens = tokenizer.tokenize();
         assert_eq!(tokens, vec![
-            Token::PlainText("Connect via ftp:".to_string()),
-            Token::PlainText("/".to_string()),
+            Token::PlainText("Connect via ftp:/".to_string()),
             Token::Italic("files.example.com or matrix:".to_string()),
-            Token::PlainText("/".to_string()),
-            Token::PlainText("matrix.org".to_string()),
+            Token::PlainText("/matrix.org".to_string()),
         ]);
     }
 
@@ -683,5 +722,103 @@ mod tests {
                 username: "alice_123@domain".to_string(),
             },
         ]);
+    }
+
+    #[test]
+    fn test_merge_consecutive_plaintext_basic() {
+        // Test the merge function directly by creating fragmented tokens
+        let tokenizer = Tokenizer::new("".to_string());
+        let fragmented_tokens = vec![
+            Token::PlainText("Hello ".to_string()),
+            Token::PlainText("world".to_string()),
+            Token::PlainText("!".to_string()),
+        ];
+        let merged = tokenizer.merge_consecutive_plaintext(fragmented_tokens);
+        assert_eq!(merged, vec![Token::PlainText("Hello world!".to_string())]);
+    }
+
+    #[test]
+    fn test_merge_consecutive_plaintext_with_other_tokens() {
+        let tokenizer = Tokenizer::new("".to_string());
+        let mixed_tokens = vec![
+            Token::PlainText("Start ".to_string()),
+            Token::PlainText("text ".to_string()),
+            Token::Bold("bold".to_string()),
+            Token::PlainText(" end".to_string()),
+            Token::PlainText(" more".to_string()),
+        ];
+        let merged = tokenizer.merge_consecutive_plaintext(mixed_tokens);
+        assert_eq!(merged, vec![
+            Token::PlainText("Start text ".to_string()),
+            Token::Bold("bold".to_string()),
+            Token::PlainText(" end more".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_merge_consecutive_plaintext_preserves_newlines() {
+        let tokenizer = Tokenizer::new("".to_string());
+        let tokens_with_newlines = vec![
+            Token::PlainText("Line 1".to_string()),
+            Token::PlainText("\n".to_string()),
+            Token::PlainText("Line 2".to_string()),
+        ];
+        let merged = tokenizer.merge_consecutive_plaintext(tokens_with_newlines);
+        // Newlines should prevent merging
+        assert_eq!(merged, vec![
+            Token::PlainText("Line 1".to_string()),
+            Token::PlainText("\n".to_string()),
+            Token::PlainText("Line 2".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_merge_consecutive_plaintext_mixed_with_newlines() {
+        let tokenizer = Tokenizer::new("".to_string());
+        let mixed_tokens = vec![
+            Token::PlainText("Before ".to_string()),
+            Token::PlainText("merge".to_string()),
+            Token::PlainText("\nWith newline".to_string()),
+            Token::PlainText("After ".to_string()),
+            Token::PlainText("merge".to_string()),
+        ];
+        let merged = tokenizer.merge_consecutive_plaintext(mixed_tokens);
+        assert_eq!(merged, vec![
+            Token::PlainText("Before merge".to_string()),
+            Token::PlainText("\nWith newline".to_string()),
+            Token::PlainText("After merge".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_merge_consecutive_plaintext_empty_tokens() {
+        let tokenizer = Tokenizer::new("".to_string());
+        let tokens_with_empty = vec![
+            Token::PlainText("Hello".to_string()),
+            Token::PlainText("".to_string()),
+            Token::PlainText(" world".to_string()),
+        ];
+        let merged = tokenizer.merge_consecutive_plaintext(tokens_with_empty);
+        assert_eq!(merged, vec![Token::PlainText("Hello world".to_string())]);
+    }
+
+    #[test] 
+    fn test_tokenizer_produces_merged_output() {
+        // This test verifies that the tokenizer integration actually produces merged output
+        // for cases where fragmentation would previously occur
+        let mut tokenizer = Tokenizer::new("ftp://example.com".to_string());
+        let tokens = tokenizer.tokenize();
+        // Before the merge, this would create ["ftp:", "/", "/", "example.com"]
+        // After the merge, it should be a single plaintext token
+        assert_eq!(tokens, vec![Token::PlainText("ftp://example.com".to_string())]);
+    }
+
+    #[test]
+    fn test_tokenizer_merge_with_failed_formatting() {
+        // Test case where formatting fails and creates fragmented plaintext
+        let mut tokenizer = Tokenizer::new("unclosed *bold text".to_string());
+        let tokens = tokenizer.tokenize();
+        // Should merge the fragmented plaintext from the failed bold parsing
+        assert_eq!(tokens, vec![Token::PlainText("unclosed *bold text".to_string())]);
     }
 }

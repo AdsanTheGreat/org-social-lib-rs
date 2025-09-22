@@ -16,6 +16,11 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
 - **Post Ownership & Mutability**: All post handling converted to `Rc<RefCell<Post>>` for shared ownership with interior mutability
   - Replaced `Post` with `Rc<RefCell<Post>>` to enable safe post mutation in single-threaded contexts
   - All relevant method signatures updated to use `Rc<RefCell<Post>>`
+- **Tokenizer Improvements**: Enhanced tokenizer to merge consecutive plain text tokens
+  - Previously, failure to close other tokens resulted in multiple consecutive plain text tokens
+  - Now, consecutive plain text tokens are merged into a single token for cleaner output
+  - Only tokens that are not separated by a newline are merged
+  - Should not affect existing behavior, as the tokens are equivalent
 
 ### Added
 - **Profile saving**: Added `Profile::save_to_file` method to save profile data back to org-social file
@@ -46,6 +51,7 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
 - Clear separation between data storage (Feed) and presentation (FeedView implementations)
 - Post now implements Eq, PartialEq and Hash - only the id is considered for those traits
 - Profile now implements Eq, PartialEq and Hash - only the title & nick are considered for those traits
+- Tokenization now includes an extra pass to merge consecutive plain text tokens
 
 ## [0.4.3] - 10-09-2025
 ### Fixed
