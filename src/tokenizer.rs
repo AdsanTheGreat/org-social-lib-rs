@@ -432,13 +432,13 @@ mod tests {
         ];
 
         for (input, expected_token) in test_cases {
-            let mut tokenizer = Tokenizer::new(format!("This is {} text", input));
+            let mut tokenizer = Tokenizer::new(format!("This is {input} text"));
             let tokens = tokenizer.tokenize();
             assert_eq!(tokens, vec![
                 Token::PlainText("This is ".to_string()),
                 expected_token,
                 Token::PlainText(" text".to_string()),
-            ], "Failed for input: {}", input);
+            ], "Failed for input: {input}");
         }
     }
 
@@ -459,16 +459,16 @@ mod tests {
         let formatting_chars = vec!['*', '/', '_', '+'];
         
         for delimiter in formatting_chars {
-            let input = format!("This {}spans\nmultiple{} lines", delimiter, delimiter);
+            let input = format!("This {delimiter}spans\nmultiple{delimiter} lines");
             let mut tokenizer = Tokenizer::new(input.clone());
             let tokens = tokenizer.tokenize();
             
             // Should be parsed as merged plain text tokens (consecutive ones are now merged)
             assert_eq!(tokens, vec![
-                Token::PlainText(format!("This {}", delimiter)),
+                Token::PlainText(format!("This {delimiter}")),
                 Token::PlainText("spans\nmultiple".to_string()),
-                Token::PlainText(format!("{} lines", delimiter)),
-            ], "Failed for delimiter: {}", delimiter);
+                Token::PlainText(format!("{delimiter} lines")),
+            ], "Failed for delimiter: {delimiter}");
         }
     }
 
@@ -496,14 +496,14 @@ mod tests {
         ];
 
         for input in test_cases {
-            let test_input = format!("This is {} empty", input);
+            let test_input = format!("This is {input} empty");
             let mut tokenizer = Tokenizer::new(test_input.clone());
             let tokens = tokenizer.tokenize();
             
             // Should be parsed as merged plain text (consecutive plaintext tokens are now merged)
             assert_eq!(tokens, vec![
-                Token::PlainText(format!("This is {} empty", input)),
-            ], "Failed for input: {}", input);
+                Token::PlainText(format!("This is {input} empty")),
+            ], "Failed for input: {input}");
         }
     }
 
@@ -519,14 +519,14 @@ mod tests {
         ];
 
         for input in test_cases {
-            let test_input = format!("This is {}", input);
+            let test_input = format!("This is {input}");
             let mut tokenizer = Tokenizer::new(test_input.clone());
             let tokens = tokenizer.tokenize();
             
             // Should be parsed as merged plain text (consecutive plaintext tokens are now merged)
             assert_eq!(tokens, vec![
-                Token::PlainText(format!("This is {}", input)),
-            ], "Failed for input: {}", input);
+                Token::PlainText(format!("This is {input}")),
+            ], "Failed for input: {input}");
         }
     }
 
@@ -594,7 +594,7 @@ mod tests {
         ];
 
         for (input, expected_url) in test_cases {
-            let test_input = format!("Visit {} for more", input);
+            let test_input = format!("Visit {input} for more");
             let mut tokenizer = Tokenizer::new(test_input);
             let tokens = tokenizer.tokenize();
             assert_eq!(tokens, vec![
@@ -604,7 +604,7 @@ mod tests {
                     description: None,
                 },
                 Token::PlainText(" for more".to_string()),
-            ], "Failed for URL: {}", input);
+            ], "Failed for URL: {input}");
         }
     }
 

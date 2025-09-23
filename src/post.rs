@@ -17,8 +17,10 @@ use crate::blocks::{ActivatableElement, parse_blocks_with_poll_end};
 /// Represents the type of a post based on its properties.
 /// Used for categorizing posts as regular posts, polls, replies, or votes.
 #[derive(Clone, Debug)]
+#[derive(Default)]
 pub enum PostType {
     /// A non-reply post that is not a poll, a standalone standard post.
+    #[default]
     Regular,
     /// A post that contains a poll.
     /// Could in theory be a reply.
@@ -33,11 +35,6 @@ pub enum PostType {
     SimplePollVote,
 }
 
-impl Default for PostType {
-    fn default() -> Self {
-        PostType::Regular
-    }
-}
 
 /// Represents a post parsed from an org-social file.
 /// 
@@ -470,13 +467,13 @@ impl Post {
 
         // Add language as first tag if present
         if let Some(lang) = self.lang() {
-            header.push_str(&format!(" #{}", lang));
+            header.push_str(&format!(" #{lang}"));
         }
 
         // Add other tags
         if let Some(tags) = self.tags() {
             for tag in tags {
-                header.push_str(&format!(" #{}", tag));
+                header.push_str(&format!(" #{tag}"));
             }
         }
 
@@ -485,13 +482,13 @@ impl Post {
             header.push_str(&format!(" • {}", time.format("%Y-%m-%d %H:%M")));
         }
 
-        output.push_str(&format!("--- {} ---\n", header));
+        output.push_str(&format!("--- {header} ---\n"));
 
         // Collect additional metadata for display
         let mut metadata = Vec::new();
 
         if let Some(client) = self.client() {
-            metadata.push(format!("Client: {}", client));
+            metadata.push(format!("Client: {client}"));
         }
 
         if let Some(group) = self.group() {
@@ -547,19 +544,19 @@ impl Post {
                     reply_id)
             };
             
-            metadata.push(format!("Reply to: {}", reply_display));
+            metadata.push(format!("Reply to: {reply_display}"));
         }
 
         if let Some(mood) = self.mood() {
-            metadata.push(format!("Mood: {}", mood));
+            metadata.push(format!("Mood: {mood}"));
         }
 
         if let Some(poll_end) = self.poll_end() {
-            metadata.push(format!("Poll ends: {}", poll_end));
+            metadata.push(format!("Poll ends: {poll_end}"));
         }
 
         if let Some(poll_option) = self.poll_option() {
-            metadata.push(format!("Poll option: {}", poll_option));
+            metadata.push(format!("Poll option: {poll_option}"));
         }
 
         // Display metadata if any exists

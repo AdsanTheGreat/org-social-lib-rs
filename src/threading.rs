@@ -311,7 +311,7 @@ impl ThreadView {
     pub fn update_poll_node(&self, post_node: &ThreadNode, poll: &mut Poll) {
         poll.clear_votes();
         for reply in &post_node.replies {
-            poll.add_vote_from_reply(&*reply.post.borrow());
+            poll.add_vote_from_reply(&reply.post.borrow());
         }
     }
 

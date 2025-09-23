@@ -51,7 +51,7 @@ impl NotificationFeed {
     /// Create a notification feed for a user based on their profile, using Feed as base
     pub fn from_feed(feed: &Feed, user_profile: &Profile) -> NotificationFeed {
         let mut notifications = Vec::new();
-        let user_posts = feed.posts_from_profile(&user_profile);
+        let user_posts = feed.posts_from_profile(user_profile);
 
         for post in feed.posts.iter() {
             let post_ref = post.borrow();
@@ -60,7 +60,7 @@ impl NotificationFeed {
                 continue;
             }
 
-            let is_mention = is_mention_to_user(&post_ref, &user_profile);
+            let is_mention = is_mention_to_user(&post_ref, user_profile);
             let is_reply = is_reply_to_user(&post_ref, &user_posts);
 
             let notification_type = match (is_mention, is_reply) {
@@ -283,7 +283,7 @@ impl std::fmt::Display for NotificationFeed {
             if let Some(source) = post_ref.source() {
                 writeln!(f, "Source: {source}")?;
             }
-            writeln!(f, "{}", post_ref)?;
+            writeln!(f, "{post_ref}")?;
             writeln!(f)?;
         }
         

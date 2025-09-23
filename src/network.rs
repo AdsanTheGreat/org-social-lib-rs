@@ -81,7 +81,7 @@ async fn fetch_and_parse_feed(
         Some(duration) => {
             match tokio::time::timeout(duration, request_future).await {
                 Ok(result) => result,
-                Err(_) => Err(format!("Timeout after {:?} while fetching {}", duration, url).into()),
+                Err(_) => Err(format!("Timeout after {duration:?} while fetching {url}").into()),
             }
         }
         None => request_future.await,

@@ -21,6 +21,12 @@ pub struct NewPostState {
     pub poll_option: Option<String>,
 }
 
+impl Default for NewPostState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NewPostState {
     pub fn new() -> Self {
         Self {

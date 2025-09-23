@@ -32,7 +32,7 @@ impl Feed {
     /// Add a view to this feed.
     pub fn add_view(&mut self, view: Rc<RefCell<dyn FeedView>>) {
         // Update the view with current data
-        view.borrow_mut().update_content(&self);
+        view.borrow_mut().update_content(self);
         self.views.push(view);
     }
 
@@ -78,7 +78,7 @@ impl Feed {
 
     pub fn update_view(&self, view: &Rc<RefCell<dyn FeedView>>) {
         let mut v = view.borrow_mut();
-        v.update_content(&self);
+        v.update_content(self);
         v.refresh();
     }
 
@@ -86,7 +86,7 @@ impl Feed {
     pub fn update_all_views(&self) {
         for view in &self.views {
             let mut v = view.borrow_mut();
-            v.update_content(&self);
+            v.update_content(self);
             v.refresh();
         }
     }
@@ -295,7 +295,7 @@ impl Feed {
     /// Assumes that authors are set correctly in posts
     pub fn from_posts_and_profiles(posts: Vec<Post>, profiles: Vec<Profile>) -> Self {
         let rc_posts: Vec<Rc<RefCell<Post>>> = posts.into_iter().map(|p| Rc::new(RefCell::new(p))).collect();
-        let arc_profiles: Vec<Arc<Profile>> = profiles.into_iter().map(|p| Arc::new(p)).collect();
+        let arc_profiles: Vec<Arc<Profile>> = profiles.into_iter().map(Arc::new).collect();
 
         // Build post->profile map using Arc<Profile>
         let mut profile_map: HashMap<String, Arc<Profile>> = HashMap::new();
@@ -316,7 +316,13 @@ impl Feed {
 /// This is the basic feed implementation that presents posts in chronological order.
 /// It operates on the underlying Feed data without duplicating storage.
 pub struct SimpleFeed {
-    posts: Vec<Rc<RefCell<Post>>>,
+    pub posts: Vec<Rc<RefCell<Post>>>,
+}
+
+impl Default for SimpleFeed {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SimpleFeed {

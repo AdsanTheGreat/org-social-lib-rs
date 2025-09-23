@@ -140,7 +140,7 @@ impl std::fmt::Display for Profile {
         
         // At some point maybe render a tiny version of it in the terminal? (depending on the terminal capabilities)
         if let Some(avatar) = &self.avatar {
-            output.push(format!("Avatar: {}", avatar));
+            output.push(format!("Avatar: {avatar}"));
         }
         
         if let Some(links) = &self.link {
@@ -148,7 +148,7 @@ impl std::fmt::Display for Profile {
                 if links.len() == 1 {
                     output.push(format!("Link: {}", links[0]));
                 } else {
-                    output.push(format!("Links:"));
+                    output.push("Links:".to_string());
                     for (i, link) in links.iter().enumerate() {
                         output.push(format!("  {}. {}", i + 1, link));
                     }
@@ -193,7 +193,7 @@ impl std::fmt::Display for Profile {
                 if contacts.len() == 1 {
                     output.push(format!("Contact: {}", contacts[0]));
                 } else {
-                    output.push(format!("Contact:"));
+                    output.push("Contact:".to_string());
                     for (i, contact) in contacts.iter().enumerate() {
                         output.push(format!("  {}. {}", i + 1, contact));
                     }
@@ -202,7 +202,7 @@ impl std::fmt::Display for Profile {
         }
         
         if let Some(source) = &self.source {
-            output.push(format!("Source: {}", source));
+            output.push(format!("Source: {source}"));
         }
         
         write!(f, "{}", output.join("\n"))
@@ -345,7 +345,7 @@ impl Profile {
         }
 
         if let Some(url) = follow_map.get(&result) {
-            result = format!("[[org-social:{}][@{}]]", url, result);
+            result = format!("[[org-social:{url}][@{result}]]");
         } else {
             return None;
         }
