@@ -39,6 +39,7 @@
 pub mod blocks;
 pub mod feed;
 pub mod feed_view;
+#[cfg(feature = "fetch")]
 pub mod network;
 pub mod new_post;
 pub mod notifications;

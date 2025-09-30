@@ -3,6 +3,12 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 30-09-2025
+### Added
+- **Fetch feature**: Added `fetch` feature flag to enable/disable asynchronous network fetching using `reqwest` and `tokio`
+  - Enabled by default
+  - Can be disabled for builds, where fetching with tokio/reqwest is not possible/needed
+
 ## [0.5.1] - 23-09-2025
 ### Fixed
 - **Clippy**: Fixed clippy lints

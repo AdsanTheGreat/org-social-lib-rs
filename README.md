@@ -55,6 +55,7 @@ org-social-lib-rs = { git = "https://github.com/AdsanTheGreat/org-social-lib-rs"
 ```
 
 ### Optional Features
+- `fetch` (default) - Enables asynchronous network fetching using `reqwest` and `tokio`. Disable it for fully offline builds (for example when targeting WASM environments without networking support).
 - `autotokenize` - Automatically parse post content into tokens and blocks when creating or modifying posts. Disabled by default for performance reasons (and it's not always needed to tokenize everything). If disabled, the `parse_content()` method has to be called manually to parse the content.
 
 ## Quick Start

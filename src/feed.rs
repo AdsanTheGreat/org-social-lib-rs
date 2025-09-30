@@ -14,6 +14,7 @@ use crate::post::Post;
 use std::rc::Rc;
 use std::cell::RefCell;
 use crate::feed_view::FeedView;
+#[cfg(feature = "fetch")]
 use crate::network;
 
 /// Main feed storage that manages posts, profiles, and multiple views.
@@ -219,6 +220,7 @@ impl Feed {
         }
     }
 
+    #[cfg(feature = "fetch")]
     /// Create a new Feed from user profile and posts, fetching followed feeds.
     pub async fn new_from_user(user_profile: &Profile, user_posts: Vec<Post>) -> Result<Self, Box<dyn std::error::Error>> {
         let mut all_posts: Vec<Rc<RefCell<Post>>> = Vec::new();
@@ -263,6 +265,12 @@ impl Feed {
         }
 
         Ok(Feed { posts: all_posts, profiles, profile_map, views: Vec::new() })
+    }
+
+    #[cfg(not(feature = "fetch"))]
+    /// Create a new Feed from user profile and posts without fetching remote feeds.
+    pub async fn new_from_user(user_profile: &Profile, user_posts: Vec<Post>) -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self::from_user_posts(user_profile, user_posts))
     }
 
     /// Create a Feed with user posts only (no network fetching).
