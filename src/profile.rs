@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::Path;
+#[cfg(feature = "serialize")]
+use serde::ser::SerializeStruct;
 
 /// Represents a user profile parsed from an org-social file.
 /// 
@@ -22,6 +24,26 @@ pub struct Profile {
     groups: Option<Vec<(String, String)>>,
     contact: Option<Vec<String>>,
     source: Option<String>,
+}
+
+#[cfg(feature = "serialize")]
+impl serde::Serialize for Profile {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("Profile", 9)?;
+        state.serialize_field("title", &self.title)?;
+        state.serialize_field("nick", &self.nick)?;
+        state.serialize_field("description", &self.description)?;
+        state.serialize_field("avatar", &self.avatar)?;
+        state.serialize_field("link", &self.link)?;
+        state.serialize_field("follow", &self.follow)?;
+        state.serialize_field("groups", &self.groups)?;
+        state.serialize_field("contact", &self.contact)?;
+        state.serialize_field("source", &self.source)?;
+        state.end()
+    }
 }
 
 

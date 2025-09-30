@@ -8,6 +8,8 @@ use std::fs::OpenOptions;
 use std::io::Write;
 
 use chrono::{DateTime, FixedOffset};
+#[cfg(feature = "serialize")]
+use serde::ser::SerializeStruct;
 
 use crate::profile::Profile;
 use crate::util;
@@ -57,6 +59,29 @@ pub struct Post {
     author: Option<String>,
     tokens: Vec<Token>,
     blocks: Vec<ActivatableElement>,
+}
+
+#[cfg(feature = "serialize")]
+impl serde::Serialize for Post {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("Post", 12)?;
+        state.serialize_field("id", &self.id)?;
+        state.serialize_field("lang", &self.lang)?;
+        state.serialize_field("tags", &self.tags)?;
+        state.serialize_field("client", &self.client)?;
+        state.serialize_field("reply_to", &self.reply_to)?;
+        state.serialize_field("poll_end", &self.poll_end)?;
+        state.serialize_field("poll_option", &self.poll_option)?;
+        state.serialize_field("mood", &self.mood)?;
+        state.serialize_field("content", &self.content)?;
+        state.serialize_field("source", &self.source)?;
+        state.serialize_field("group", &self.group)?;
+        state.serialize_field("author", &self.author)?;
+        state.end()
+    }
 }
 
 

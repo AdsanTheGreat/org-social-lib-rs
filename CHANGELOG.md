@@ -3,6 +3,13 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 30-09-2025
+### Added
+- **Serialize feature**: Added `serialize` feature flag to enable/disable serde-based serialization for profiles and posts
+  - Disabled by default
+  - Enables `Serialize` and `Deserialize` traits for `Profile` and `Post`
+  - Tokens and blocks are not serialized
+
 ## [0.5.2] - 30-09-2025
 ### Added
 - **Fetch feature**: Added `fetch` feature flag to enable/disable asynchronous network fetching using `reqwest` and `tokio`
