@@ -3,6 +3,14 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- **Cache Management**: Added cache functionality to the network module
+  - To reduce feed fetching, feed files can be cached locally
+  - Cached content is refetched if older than a configurable max age
+  - Cache is used as a fallback if fetching fails, regardless of timeout - better something than nothing
+  - Configurable cache directory and max age for cached feed files
+
 ## [0.5.3] - 30-09-2025
 ### Added
 - **Serialize feature**: Added `serialize` feature flag to enable/disable serde-based serialization for profiles and posts
