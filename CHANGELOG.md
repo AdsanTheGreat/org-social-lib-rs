@@ -5,6 +5,9 @@ and this project adheres to (as crates are supposed to) [Semantic Versioning](ht
 
 ## [Unreleased]
 ### Added
+- **Avatar fetching**: Added avatar module reusing network fetch options for downloading profile avatars
+  - Supports single and batch avatar fetching with automatic caching
+  - Provides in-memory mapping keyed by profile nickname for quick lookup
 - **Cache Management**: Added cache functionality to the network module
   - To reduce feed fetching, feed files can be cached locally
   - Cached content is refetched if older than a configurable max age

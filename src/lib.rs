@@ -41,6 +41,8 @@ pub mod feed;
 pub mod feed_view;
 #[cfg(feature = "fetch")]
 pub mod network;
+#[cfg(feature = "fetch")]
+pub mod avatar;
 pub mod new_post;
 pub mod notifications;
 pub mod parser;
