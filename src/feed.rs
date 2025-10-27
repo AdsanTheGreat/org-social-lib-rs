@@ -317,6 +317,191 @@ impl Feed {
 
         Feed { posts: rc_posts, profiles: arc_profiles, profile_map, views: Vec::new() }
     }
+
+    #[cfg(all(feature = "fetch", feature = "relay"))]
+    pub async fn new_threaded_from_relay(
+        user_profile: &Profile,
+        user_posts: Vec<Post>,
+        relay_client: &crate::relay::RelayClient,
+        fetch_options: Option<network::FetchOptions>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        use std::collections::HashSet;
+
+        let fetch_options = fetch_options.unwrap_or_default();
+        let mut all_posts: Vec<Post> = Vec::new();
+        let mut all_profiles: Vec<Profile> = Vec::new();
+        let mut seen_profiles: HashSet<String> = HashSet::new();
+
+        // Add user profile
+        let user_nick = user_profile.nick().to_string();
+        all_profiles.push(user_profile.clone());
+        seen_profiles.insert(user_nick.clone());
+
+        // Add user's own posts
+        for mut post in user_posts {
+            post.set_author(user_nick.clone());
+            all_posts.push(post);
+        }
+
+        // Fetch posts from followed users
+        let followed_list = match user_profile.follow() {
+            Some(follows) => follows.clone(),
+            None => Vec::new(),
+        };
+        let followed_feeds = network::get_feeds_with_options(
+            followed_list,
+            fetch_options.clone()
+        ).await;
+
+        // Collect all posts and profiles from followed feeds
+        let mut post_urls: Vec<String> = Vec::new();
+        for (profile, posts, source) in followed_feeds {
+            let author_nick = if profile.nick().is_empty() {
+                "unknown".to_string()
+            } else {
+                profile.nick().to_string()
+            };
+
+            // Add profile if not seen
+            if seen_profiles.insert(author_nick.clone()) {
+                all_profiles.push(profile.clone());
+            }
+
+            // Add posts and collect URLs for reply fetching
+            for mut post in posts {
+                post.set_author(author_nick.clone());
+                post.set_source(Some(source.clone()));
+                
+                // Build post URL for relay query (format: feed_url#post_id)
+                let post_url = format!("{}#{}", source, post.id());
+                post_urls.push(post_url);
+                
+                all_posts.push(post);
+            }
+        }
+
+        // Fetch replies for all posts using provided relay client
+        let mut seen_post_ids: HashSet<String> = all_posts.iter()
+            .map(|p| p.id().to_string())
+            .collect();
+
+        // Fetch replies for each post URL
+        for post_url in &post_urls {
+            match relay_client.get_replies(post_url).await {
+                Ok(replies_response) => {
+                    // Collect all reply URLs from the tree
+                    let mut reply_urls = Vec::new();
+                    collect_reply_urls_from_response(&replies_response.data, &mut reply_urls);
+
+                    // Resolve reply URLs to actual posts
+                    if !reply_urls.is_empty() {
+                        match resolve_reply_posts(&reply_urls, &fetch_options).await {
+                            Ok((mut reply_posts, reply_profiles)) => {
+                                // Add new profiles
+                                for profile in reply_profiles {
+                                    let nick = profile.nick().to_string();
+                                    if seen_profiles.insert(nick) {
+                                        all_profiles.push(profile);
+                                    }
+                                }
+                                
+                                // Add new posts (avoid duplicates)
+                                for post in reply_posts.drain(..) {
+                                    if seen_post_ids.insert(post.id().to_string()) {
+                                        all_posts.push(post);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to resolve replies for {}: {}", post_url, e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to fetch replies for {}: {}", post_url, e);
+                }
+            }
+        }
+
+        // Build feed with all collected posts and profiles
+        Ok(Self::from_posts_and_profiles(all_posts, all_profiles))
+    }
+}
+
+#[cfg(all(feature = "fetch", feature = "relay"))]
+/// Helper function to recursively collect reply URLs from relay response tree.
+fn collect_reply_urls_from_response(nodes: &[crate::relay::ReplyNode], acc: &mut Vec<String>) {
+    for node in nodes {
+        acc.push(node.post.clone());
+        if !node.children.is_empty() {
+            collect_reply_urls_from_response(&node.children, acc);
+        }
+    }
+}
+
+#[cfg(all(feature = "fetch", feature = "relay"))]
+/// Helper function to resolve reply post URLs into actual posts and profiles.
+async fn resolve_reply_posts(
+    post_urls: &[String],
+    fetch_options: &network::FetchOptions,
+) -> Result<(Vec<Post>, Vec<Profile>), Box<dyn std::error::Error>> {
+    use std::collections::{HashMap, HashSet};
+
+    // Group post URLs by feed
+    let mut feed_requests: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    for url in post_urls {
+        if let Some((feed, fragment)) = url.split_once('#') {
+            let feed = feed.trim();
+            let fragment = fragment.trim();
+            if !feed.is_empty() && !fragment.is_empty() {
+                feed_requests.entry(feed.to_string())
+                    .or_default()
+                    .push((fragment.to_string(), url.clone()));
+            }
+        }
+    }
+
+    let fetch_targets: Vec<(String, String)> = feed_requests
+        .keys()
+        .map(|feed| (feed.clone(), feed.clone()))
+        .collect();
+
+    // Fetch all feeds (with caching)
+    let fetched = network::get_feeds_with_options(fetch_targets, fetch_options.clone()).await;
+    
+    let mut resolved_posts = Vec::new();
+    let mut resolved_profiles = Vec::new();
+    let mut seen_profiles: HashSet<String> = HashSet::new();
+
+    for (profile, posts, source_url) in fetched {
+        if let Some(requested_posts) = feed_requests.get(&source_url) {
+            let mut posts_by_id: HashMap<String, Post> = posts
+                .into_iter()
+                .map(|mut post| {
+                    if post.author().is_none() {
+                        post.set_author(profile.nick().to_string());
+                    }
+                    (post.id().to_string(), post)
+                })
+                .collect();
+
+            // Add profile if not seen
+            let profile_key = profile.nick().to_string();
+            if seen_profiles.insert(profile_key) {
+                resolved_profiles.push(profile.clone());
+            }
+
+            // Extract requested posts
+            for (post_id, _) in requested_posts {
+                if let Some(post) = posts_by_id.remove(post_id) {
+                    resolved_posts.push(post);
+                }
+            }
+        }
+    }
+
+    Ok((resolved_posts, resolved_profiles))
 }
 
 /// A simple chronologically sorted feed view.
