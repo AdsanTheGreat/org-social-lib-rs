@@ -17,6 +17,26 @@ use crate::feed_view::FeedView;
 #[cfg(feature = "fetch")]
 use crate::network;
 
+#[cfg(all(feature = "fetch", feature = "relay"))]
+/// Configuration for relay-based feed creation.
+#[derive(Debug, Clone)]
+pub struct RelayFeedOptions {
+    /// Maximum number of posts to fetch replies for (most recent posts).
+    pub max_posts_with_replies: Option<usize>,
+    /// Whether to fetch the full reply tree or just direct replies.
+    pub fetch_full_tree: bool,
+}
+
+#[cfg(all(feature = "fetch", feature = "relay"))]
+impl Default for RelayFeedOptions {
+    fn default() -> Self {
+        Self {
+            max_posts_with_replies: Some(20),
+            fetch_full_tree: true,
+        }
+    }
+}
+
 /// Main feed storage that manages posts, profiles, and multiple views.
 ///
 /// The Feed struct serves as the central storage for posts and profiles,
@@ -324,10 +344,12 @@ impl Feed {
         user_posts: Vec<Post>,
         relay_client: &crate::relay::RelayClient,
         fetch_options: Option<network::FetchOptions>,
+        relay_options: Option<RelayFeedOptions>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         use std::collections::HashSet;
 
         let fetch_options = fetch_options.unwrap_or_default();
+        let relay_options = relay_options.unwrap_or_default();
         let mut all_posts: Vec<Post> = Vec::new();
         let mut all_profiles: Vec<Profile> = Vec::new();
         let mut seen_profiles: HashSet<String> = HashSet::new();
@@ -373,53 +395,96 @@ impl Feed {
                 post.set_source(Some(source.clone()));
                 
                 // Build post URL for relay query (format: feed_url#post_id)
-                let post_url = format!("{}#{}", source, post.id());
-                post_urls.push(post_url);
+                // Only include the # if we have a post ID
+                let post_id = post.id();
+                if !post_id.is_empty() {
+                    let post_url = format!("{}#{}", source, post_id);
+                    post_urls.push(post_url);
+                }
                 
                 all_posts.push(post);
             }
         }
+
+        // Limit the number of posts we fetch replies for (most recent ones)
+        // This prevents fetching replies for hundreds of old posts
+        if let Some(max_posts) = relay_options.max_posts_with_replies {
+            if post_urls.len() > max_posts {
+                // Sort by timestamp (most recent first) if possible
+                // For now, just take the last N posts (most recently added)
+                post_urls = post_urls.into_iter()
+                    .rev()
+                    .take(max_posts)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect();
+            }
+        }
+
+        println!("Fetching replies for {} posts from relay...", post_urls.len());
 
         // Fetch replies for all posts using provided relay client
         let mut seen_post_ids: HashSet<String> = all_posts.iter()
             .map(|p| p.id().to_string())
             .collect();
 
-        // Fetch replies for each post URL
-        for post_url in &post_urls {
-            match relay_client.get_replies(post_url).await {
-                Ok(replies_response) => {
-                    // Collect all reply URLs from the tree
-                    let mut reply_urls = Vec::new();
-                    collect_reply_urls_from_response(&replies_response.data, &mut reply_urls);
+        // Fetch all replies concurrently to improve performance
+        let reply_futures: Vec<_> = post_urls.iter()
+            .map(|post_url| {
+                let relay = relay_client.clone();
+                let url = post_url.clone();
+                tokio::spawn(async move {
+                    (url.clone(), relay.get_replies(&url).await)
+                })
+            })
+            .collect();
 
-                    // Resolve reply URLs to actual posts
-                    if !reply_urls.is_empty() {
-                        match resolve_reply_posts(&reply_urls, &fetch_options).await {
-                            Ok((mut reply_posts, reply_profiles)) => {
-                                // Add new profiles
-                                for profile in reply_profiles {
-                                    let nick = profile.nick().to_string();
-                                    if seen_profiles.insert(nick) {
-                                        all_profiles.push(profile);
-                                    }
-                                }
-                                
-                                // Add new posts (avoid duplicates)
-                                for post in reply_posts.drain(..) {
-                                    if seen_post_ids.insert(post.id().to_string()) {
-                                        all_posts.push(post);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to resolve replies for {}: {}", post_url, e);
-                            }
+        // Collect all unique reply URLs from all relay responses
+        let mut all_reply_urls = HashSet::new();
+        for future in reply_futures {
+            if let Ok((post_url, Ok(replies_response))) = future.await {
+                if !replies_response.data.is_empty() {
+                    println!("Got {} reply trees for {}", replies_response.data.len(), post_url);
+                }
+                
+                // Collect reply URLs from the tree structure
+                let mut reply_urls = Vec::new();
+                if relay_options.fetch_full_tree {
+                    // Recursively collect all replies in the tree
+                    collect_reply_urls_from_response(&replies_response.data, &mut reply_urls);
+                } else {
+                    // Only collect direct replies (first level)
+                    collect_direct_reply_urls(&replies_response.data, &mut reply_urls);
+                }
+                all_reply_urls.extend(reply_urls);
+            }
+        }
+
+        println!("Found {} unique reply URLs to fetch", all_reply_urls.len());
+
+        // Resolve all unique reply URLs in one batch
+        if !all_reply_urls.is_empty() {
+            let reply_urls_vec: Vec<String> = all_reply_urls.into_iter().collect();
+            match resolve_reply_posts(&reply_urls_vec, &fetch_options).await {
+                Ok((mut reply_posts, reply_profiles)) => {
+                    // Add new profiles
+                    for profile in reply_profiles {
+                        let nick = profile.nick().to_string();
+                        if seen_profiles.insert(nick) {
+                            all_profiles.push(profile);
+                        }
+                    }
+                    
+                    // Add new posts (avoid duplicates)
+                    for post in reply_posts.drain(..) {
+                        if seen_post_ids.insert(post.id().to_string()) {
+                            all_posts.push(post);
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to fetch replies for {}: {}", post_url, e);
+                    eprintln!("Failed to resolve reply posts: {}", e);
                 }
             }
         }
@@ -437,6 +502,15 @@ fn collect_reply_urls_from_response(nodes: &[crate::relay::ReplyNode], acc: &mut
         if !node.children.is_empty() {
             collect_reply_urls_from_response(&node.children, acc);
         }
+    }
+}
+
+#[cfg(all(feature = "fetch", feature = "relay"))]
+/// Helper function to collect only direct reply URLs (first level, not recursive).
+fn collect_direct_reply_urls(nodes: &[crate::relay::ReplyNode], acc: &mut Vec<String>) {
+    for node in nodes {
+        acc.push(node.post.clone());
+        // Don't recurse into children - only get first level
     }
 }
 

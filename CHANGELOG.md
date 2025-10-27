@@ -3,6 +3,10 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0-rc2] - 27-10-2025
+### Fixed
+- **Relay feed creation**: better concurrency, added limiter on how many posts and replies are handled
+
 ## [0.6.0-rc1] - 27-10-2025
 ### Added
 - **Relay integration**:

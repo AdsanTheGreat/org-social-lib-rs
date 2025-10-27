@@ -351,6 +351,7 @@ fn profile_identifier(profile: &Profile) -> String {
 }
 
 /// Client for communicating with an Org Social Relay server.
+#[derive(Clone)]
 pub struct RelayClient {
 	pub base_url: String,
 	pub client: Client,
