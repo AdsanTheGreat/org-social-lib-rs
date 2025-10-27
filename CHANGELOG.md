@@ -3,8 +3,11 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0-rc1] - 27-10-2025
 ### Added
+- **Relay integration**:
+  - Base for interacting with the relay network
+  - Can go up to fetching replies to posts
 - **Avatar fetching**: Added avatar module reusing network fetch options for downloading profile avatars
   - Supports single and batch avatar fetching with automatic caching
   - Provides in-memory mapping keyed by profile nickname for quick lookup
