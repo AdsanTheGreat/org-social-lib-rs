@@ -41,6 +41,8 @@ pub mod feed;
 pub mod feed_view;
 #[cfg(feature = "fetch")]
 pub mod network;
+#[cfg(feature = "fetch")]
+pub mod avatar;
 pub mod new_post;
 pub mod notifications;
 pub mod parser;
@@ -50,3 +52,5 @@ pub mod profile;
 pub mod threading;
 pub mod tokenizer;
 pub mod util;
+#[cfg(feature = "relay")]
+pub mod relay;

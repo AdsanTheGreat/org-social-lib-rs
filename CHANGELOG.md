@@ -3,6 +3,24 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to (as crates are supposed to) [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0-rc2] - 27-10-2025
+### Fixed
+- **Relay feed creation**: better concurrency, added limiter on how many posts and replies are handled
+
+## [0.6.0-rc1] - 27-10-2025
+### Added
+- **Relay integration**:
+  - Base for interacting with the relay network
+  - Can go up to fetching replies to posts
+- **Avatar fetching**: Added avatar module reusing network fetch options for downloading profile avatars
+  - Supports single and batch avatar fetching with automatic caching
+  - Provides in-memory mapping keyed by profile nickname for quick lookup
+- **Cache Management**: Added cache functionality to the network module
+  - To reduce feed fetching, feed files can be cached locally
+  - Cached content is refetched if older than a configurable max age
+  - Cache is used as a fallback if fetching fails, regardless of timeout - better something than nothing
+  - Configurable cache directory and max age for cached feed files
+
 ## [0.5.3] - 30-09-2025
 ### Added
 - **Serialize feature**: Added `serialize` feature flag to enable/disable serde-based serialization for profiles and posts
